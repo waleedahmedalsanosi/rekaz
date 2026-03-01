@@ -5,35 +5,62 @@ import {
   CheckCircle, Send, MapPin, ShieldCheck, AlertCircle,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import {
-  MOCK_SERVICES, MOCK_BOOKINGS, MOCK_PROVIDERS, MOCK_REVIEWS,
-  MOCK_CONVERSATIONS, MOCK_MESSAGES, RIYADH_NEIGHBORHOODS,
-} from '../../shared/mockData';
-import { BookingStatus, PaymentStatus, Provider, Conversation, Message } from '../../shared/types';
+import { RIYADH_NEIGHBORHOODS } from '../../shared/mockData';
+import { BookingStatus, PaymentStatus } from '../../shared/types';
 import { useToast } from '../../shared/Toast';
+import { api, ApiProvider, ApiService, ApiBooking, ApiConversation, ApiMessage, ApiReview } from '../../lib/api';
+import { useAuth } from '../../contexts/AuthContext';
 
 const CATEGORIES = ['الكل', 'مكياج', 'شعر'];
 const COMMISSION_RATE = 0.02;
 
 export default function ClientApp() {
   const { toast } = useToast();
+  const { user, logout } = useAuth();
   const [activeTab, setActiveTab] = useState('dashboard');
   const [showModal, setShowModal] = useState<string | null>(null);
   const [selectedItem, setSelectedItem] = useState<any>(null);
-  const [selectedProvider, setSelectedProvider] = useState<Provider | null>(null);
+  const [selectedProvider, setSelectedProvider] = useState<ApiProvider | null>(null);
+  const [providerServices, setProviderServices] = useState<ApiService[]>([]);
+  const [providerReviews, setProviderReviews] = useState<ApiReview[]>([]);
   const [categoryFilter, setCategoryFilter] = useState<string | null>(null);
   const [reviewRating, setReviewRating] = useState(5);
   const [reviewComment, setReviewComment] = useState('');
   const [selectedNeighborhood, setSelectedNeighborhood] = useState('');
 
-  const [bookings, setBookings] = useState(MOCK_BOOKINGS.filter(b => b.customerId === '1'));
-  const [services] = useState(MOCK_SERVICES);
-  const [reviews, setReviews] = useState(MOCK_REVIEWS);
-  const [conversations, setConversations] = useState<Conversation[]>(MOCK_CONVERSATIONS);
-  const [messages, setMessages] = useState<Message[]>(MOCK_MESSAGES);
-  const [activeConversation, setActiveConversation] = useState<Conversation | null>(null);
+  const [providers, setProviders] = useState<ApiProvider[]>([]);
+  const [bookings, setBookings] = useState<ApiBooking[]>([]);
+  const [services, setServices] = useState<ApiService[]>([]);
+  const [conversations, setConversations] = useState<ApiConversation[]>([]);
+  const [messages, setMessages] = useState<ApiMessage[]>([]);
+  const [activeConversation, setActiveConversation] = useState<ApiConversation | null>(null);
   const [chatInput, setChatInput] = useState('');
+  const [dataLoading, setDataLoading] = useState(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    loadData();
+  }, []);
+
+  async function loadData() {
+    setDataLoading(true);
+    try {
+      const [provs, svcs, bkgs, convs] = await Promise.all([
+        api.providers.list(),
+        api.services.list(),
+        api.bookings.list(),
+        api.conversations.list(),
+      ]);
+      setProviders(provs);
+      setServices(svcs);
+      setBookings(bkgs);
+      setConversations(convs);
+    } catch (e: any) {
+      toast(e.message || 'خطأ في تحميل البيانات', 'error');
+    } finally {
+      setDataLoading(false);
+    }
+  }
 
   const filteredServices = categoryFilter
     ? services.filter(s => s.category === categoryFilter)
@@ -60,104 +87,87 @@ export default function ClientApp() {
     setSelectedNeighborhood('');
   };
 
-  const handleStartChat = (provider: Provider) => {
-    const existing = conversations.find(c => c.providerId === provider.id);
-    if (existing) {
-      setActiveConversation(existing);
-    } else {
-      const newConv: Conversation = {
-        id: Math.random().toString(36).slice(2),
-        clientId: '1',
-        clientName: 'نورة العتيبي',
-        providerId: provider.id,
-        providerName: provider.name,
-        providerAvatar: provider.avatar,
-        lastMessage: '',
-        lastMessageAt: new Date().toISOString(),
-        unreadCount: 0,
-      };
-      setConversations([newConv, ...conversations]);
-      setActiveConversation(newConv);
+  const handleStartChat = async (provider: ApiProvider) => {
+    try {
+      const existing = conversations.find(c => c.providerId === provider.id);
+      let conv: ApiConversation;
+      if (existing) {
+        conv = existing;
+      } else {
+        conv = await api.conversations.start(provider.id);
+        setConversations(prev => [conv, ...prev]);
+      }
+      const msgs = await api.conversations.messages(conv.id);
+      setMessages(msgs);
+      setActiveConversation(conv);
+      setSelectedProvider(null);
+      setActiveTab('messages');
+    } catch (e: any) {
+      toast(e.message || 'حدث خطأ', 'error');
     }
-    setSelectedProvider(null);
-    setActiveTab('messages');
   };
 
-  const handleSendMessage = () => {
+  const handleOpenConversation = async (conv: ApiConversation) => {
+    setActiveConversation(conv);
+    try {
+      const msgs = await api.conversations.messages(conv.id);
+      setMessages(msgs);
+    } catch { /* ignore */ }
+  };
+
+  const handleSendMessage = async () => {
     if (!chatInput.trim() || !activeConversation) return;
-    const newMsg: Message = {
-      id: Math.random().toString(36).slice(2),
-      conversationId: activeConversation.id,
-      senderId: '1',
-      senderRole: 'CLIENT',
-      content: chatInput.trim(),
-      isRead: false,
-      createdAt: new Date().toISOString(),
-    };
-    setMessages([...messages, newMsg]);
-    setConversations(conversations.map(c =>
-      c.id === activeConversation.id
-        ? { ...c, lastMessage: chatInput.trim(), lastMessageAt: new Date().toISOString() }
-        : c
-    ));
+    const content = chatInput.trim();
     setChatInput('');
+    try {
+      const newMsg = await api.conversations.send(activeConversation.id, content);
+      setMessages(prev => [...prev, newMsg]);
+      setConversations(prev => prev.map(c =>
+        c.id === activeConversation.id
+          ? { ...c, lastMessage: content, lastMessageAt: new Date().toISOString() }
+          : c
+      ));
+    } catch (e: any) {
+      toast(e.message || 'فشل إرسال الرسالة', 'error');
+    }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const formData = new FormData(e.target as HTMLFormElement);
     const data = Object.fromEntries(formData.entries());
 
-    if (showModal === 'add_booking') {
-      const neighborhood = selectedNeighborhood || (data.neighborhood as string);
-      if (!neighborhood) { toast('يرجى اختيار الحي', 'error'); return; }
-      const servicePrice = selectedItem.price;
-      const commission = Math.round(servicePrice * COMMISSION_RATE);
-      const newBooking = {
-        id: Math.random().toString(36).slice(2),
-        customerId: '1',
-        serviceId: selectedItem.id,
-        providerId: 'p1',
-        date: data.date as string,
-        time: data.time as string,
-        status: BookingStatus.PENDING,
-        paymentStatus: PaymentStatus.PAID,
-        servicePrice,
-        commission,
-        totalPrice: servicePrice + commission,
-        neighborhood,
-        clientConfirmed: false,
-        providerConfirmed: false,
-      };
-      setBookings([newBooking, ...bookings]);
-      toast('تم إرسال طلب الحجز! سيتم تأكيده قريباً ✓');
-    } else if (showModal === 'process_payment') {
-      setBookings(bookings.map(b =>
-        b.id === selectedItem.id ? { ...b, paymentStatus: PaymentStatus.PAID } : b
-      ));
-      toast('تمت عملية الدفع بنجاح 💳');
-    } else if (showModal === 'add_review') {
-      const newReview = {
-        id: Math.random().toString(36).slice(2),
-        bookingId: selectedItem.id,
-        customerId: '1',
-        providerId: selectedItem.providerId,
-        rating: reviewRating,
-        comment: reviewComment,
-        createdAt: new Date().toISOString().split('T')[0],
-      };
-      setReviews([...reviews, newReview]);
-      setBookings(bookings.map(b =>
-        b.id === selectedItem.id ? { ...b, reviewId: newReview.id } : b
-      ));
-      toast('تم إرسال تقييمك، شكراً لكِ! ⭐');
-    } else if (showModal === 'confirm_service') {
-      setBookings(bookings.map(b =>
-        b.id === selectedItem.id
-          ? { ...b, clientConfirmed: true, status: b.providerConfirmed ? BookingStatus.COMPLETED : b.status }
-          : b
-      ));
-      toast('تم تأكيد استلام الخدمة ✓');
+    try {
+      if (showModal === 'add_booking') {
+        const neighborhood = selectedNeighborhood || (data.neighborhood as string);
+        if (!neighborhood) { toast('يرجى اختيار الحي', 'error'); return; }
+        const booking = await api.bookings.create({
+          serviceId: selectedItem.id,
+          providerId: selectedItem.providerId,
+          date: data.date as string,
+          time: data.time as string,
+          neighborhood,
+        });
+        // Auto-pay
+        const paid = await api.bookings.pay(booking.id);
+        setBookings(prev => [paid, ...prev]);
+        toast('تم إرسال طلب الحجز! سيتم تأكيده قريباً ✓');
+      } else if (showModal === 'process_payment') {
+        const paid = await api.bookings.pay(selectedItem.id);
+        setBookings(prev => prev.map(b => b.id === paid.id ? paid : b));
+        toast('تمت عملية الدفع بنجاح 💳');
+      } else if (showModal === 'add_review') {
+        const review = await api.reviews.create(selectedItem.id, reviewRating, reviewComment);
+        setBookings(prev => prev.map(b => b.id === selectedItem.id ? { ...b, reviewId: review.id } : b));
+        toast('تم إرسال تقييمك، شكراً لكِ! ⭐');
+      } else if (showModal === 'confirm_service') {
+        const b = await api.bookings.confirm(selectedItem.id);
+        setBookings(prev => prev.map(x => x.id === b.id ? b : x));
+        toast('تم تأكيد استلام الخدمة ✓');
+      }
+    } catch (e: any) {
+      toast(e.message || 'حدث خطأ', 'error');
+      return;
     }
 
     handleClose();
@@ -185,10 +195,20 @@ export default function ClientApp() {
       <div className="space-y-3">
         <h3 className="font-bold">أفضل خبيرات التجميل</h3>
         <div className="flex gap-4 overflow-x-auto no-scrollbar -mx-4 px-4">
-          {MOCK_PROVIDERS.map((provider) => (
+          {providers.map((provider) => (
             <button
               key={provider.id}
-              onClick={() => setSelectedProvider(provider)}
+              onClick={async () => {
+                setSelectedProvider(provider);
+                try {
+                  const [svcs, revs] = await Promise.all([
+                    api.providers.services(provider.id),
+                    api.providers.reviews(provider.id),
+                  ]);
+                  setProviderServices(svcs);
+                  setProviderReviews(revs);
+                } catch { /* ignore */ }
+              }}
               className="min-w-40 bg-white rounded-4xl border border-gray-100 p-4 shadow-sm text-center active:scale-[0.97] transition-all"
             >
               <div className="relative w-20 h-20 mx-auto mb-3">
@@ -274,8 +294,6 @@ export default function ClientApp() {
       ) : (
         <div className="space-y-4">
           {bookings.map((booking) => {
-            const service = services.find(s => s.id === booking.serviceId);
-            const provider = MOCK_PROVIDERS.find(p => p.id === booking.providerId);
             const hasReview = !!booking.reviewId;
             const bothConfirmed = booking.clientConfirmed && booking.providerConfirmed;
 
@@ -292,8 +310,8 @@ export default function ClientApp() {
                 <div className={`absolute top-0 right-0 w-1.5 h-full ${statusConfig.color}`} />
                 <div className="flex justify-between items-start mb-3">
                   <div>
-                    <h4 className="font-bold">{service?.name}</h4>
-                    <p className="text-xs text-gray-400 mt-0.5">مع {provider?.name}</p>
+                    <h4 className="font-bold">{booking.serviceName}</h4>
+                    <p className="text-xs text-gray-400 mt-0.5">مع {booking.providerName}</p>
                     <p className="text-[10px] text-gray-400">{booking.date} • {booking.time}</p>
                     {booking.neighborhood && (
                       <div className="flex items-center gap-1 mt-1">
@@ -427,7 +445,7 @@ export default function ClientApp() {
             {conversations.map(conv => (
               <button
                 key={conv.id}
-                onClick={() => setActiveConversation(conv)}
+                onClick={() => handleOpenConversation(conv)}
                 className="w-full p-5 flex items-center gap-4 text-right hover:bg-gray-50 transition-colors"
               >
                 <div className="w-12 h-12 rounded-2xl overflow-hidden shrink-0">
@@ -460,10 +478,10 @@ export default function ClientApp() {
             <img src="https://picsum.photos/seed/client/100/100" alt="" />
           </div>
           <div className="flex-1">
-            <h3 className="font-black text-lg">نورة العتيبي</h3>
+            <h3 className="font-black text-lg">{user?.name || 'عميلة'}</h3>
             <p className="text-xs text-white/80">عميلة مميزة</p>
           </div>
-          <button className="p-2 bg-white/20 rounded-xl"><LogOut size={18} /></button>
+          <button onClick={logout} className="p-2 bg-white/20 rounded-xl"><LogOut size={18} /></button>
         </div>
         <div className="p-4 space-y-1">
           {[
@@ -484,8 +502,8 @@ export default function ClientApp() {
         <div className="grid grid-cols-3 gap-3">
           {[
             { label: 'حجوزاتي', value: String(bookings.length) },
-            { label: 'تقييماتي', value: String(reviews.filter(r => r.customerId === '1').length) },
-            { label: 'أنفقت', value: `${bookings.filter(b => b.paymentStatus === PaymentStatus.PAID).reduce((s, b) => s + b.totalPrice, 0)} ﷼` },
+            { label: 'تقييماتي', value: String(bookings.filter(b => b.reviewId).length) },
+            { label: 'أنفقت', value: `${bookings.filter(b => b.paymentStatus === 'PAID').reduce((s, b) => s + b.totalPrice, 0)} ﷼` },
           ].map((s, i) => (
             <div key={i} className="text-center p-3 bg-gray-50 rounded-2xl">
               <p className="text-lg font-black">{s.value}</p>
@@ -500,7 +518,6 @@ export default function ClientApp() {
   // ─── Render: Provider Profile ────────────────────────────────────────────
   const renderProviderProfile = () => {
     if (!selectedProvider) return null;
-    const providerReviews = reviews.filter(r => r.providerId === selectedProvider.id);
     const avgRating = providerReviews.length
       ? (providerReviews.reduce((s, r) => s + r.rating, 0) / providerReviews.length).toFixed(1)
       : selectedProvider.rating.toFixed(1);
@@ -547,7 +564,7 @@ export default function ClientApp() {
             <span>راسليها</span>
           </button>
           <button
-            onClick={() => { setSelectedItem(services[0]); setSelectedProvider(null); setShowModal('add_booking'); }}
+            onClick={() => { setSelectedItem(providerServices[0] || services[0]); setSelectedProvider(null); setShowModal('add_booking'); }}
             className="flex-1 flex items-center justify-center gap-2 py-3 bg-black text-white rounded-2xl text-sm font-bold"
           >
             <Calendar size={16} />
@@ -560,7 +577,7 @@ export default function ClientApp() {
           {[
             { label: 'التقييم', value: `${avgRating} ★` },
             { label: 'التقييمات', value: String(selectedProvider.reviewCount ?? providerReviews.length) },
-            { label: 'الخدمات', value: String(services.length) },
+            { label: 'الخدمات', value: String(providerServices.length) },
           ].map((s, i) => (
             <div key={i} className="bg-white rounded-2xl p-3 text-center border border-gray-100">
               <p className="font-black text-base">{s.value}</p>
@@ -598,7 +615,7 @@ export default function ClientApp() {
         <div className="mb-6">
           <h3 className="font-bold mb-3">الخدمات المتاحة</h3>
           <div className="space-y-3">
-            {services.map(service => {
+            {providerServices.map(service => {
               const commission = Math.round(service.price * COMMISSION_RATE);
               return (
                 <div key={service.id} className="bg-white rounded-3xl border border-gray-100 p-4 flex items-center gap-4">
@@ -632,6 +649,7 @@ export default function ClientApp() {
         {/* Reviews */}
         <div>
           <h3 className="font-bold mb-3">التقييمات ({providerReviews.length})</h3>
+
           {providerReviews.length === 0 ? (
             <div className="bg-white rounded-3xl border border-gray-100 p-6 text-center">
               <p className="text-gray-400 text-sm">لا توجد تقييمات بعد</p>
@@ -734,7 +752,7 @@ export default function ClientApp() {
                         <span className="font-bold text-sm">{selectedItem?.price} ﷼</span>
                       </div>
                       <div className="flex items-center justify-between">
-                        <span className="text-xs text-gray-400">عمولة ركاز (2%)</span>
+                        <span className="text-xs text-gray-400">عمولة زينة (2%)</span>
                         <span className="text-xs text-gray-400">+ {commission} ﷼</span>
                       </div>
                       <div className="border-t border-orange-100 pt-2 flex items-center justify-between">
@@ -802,7 +820,7 @@ export default function ClientApp() {
                         <span className="text-sm font-bold">{booking?.servicePrice} ﷼</span>
                       </div>
                       <div className="flex items-center justify-between">
-                        <span className="text-xs text-gray-400">عمولة ركاز (2%)</span>
+                        <span className="text-xs text-gray-400">عمولة زينة (2%)</span>
                         <span className="text-xs text-gray-400">+ {booking?.commission} ﷼</span>
                       </div>
                       <div className="border-t border-gray-100 pt-2 flex items-center justify-between">

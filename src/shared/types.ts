@@ -62,7 +62,7 @@ export interface Booking {
   status: BookingStatus;
   paymentStatus: PaymentStatus;
   servicePrice: number;   // سعر الخدمة الأصلي
-  commission: number;     // عمولة ركاز 2%
+  commission: number;     // عمولة زينة 2%
   totalPrice: number;     // servicePrice + commission
   neighborhood?: string;  // حي العميلة
   reviewId?: string;

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Users, Calendar, CreditCard, Settings, TrendingUp, Star, LogOut,
   PieChart, ChevronRight, Plus, ArrowLeft, CheckCircle, AlertCircle,
@@ -8,31 +8,51 @@ import { motion, AnimatePresence } from 'motion/react';
 import {
   ResponsiveContainer, Tooltip, LineChart, Line, CartesianGrid, XAxis, YAxis,
 } from 'recharts';
-import {
-  MOCK_CUSTOMERS, MOCK_BOOKINGS, MOCK_PROVIDERS,
-  MOCK_DISPUTES, MOCK_PAYOUT_REQUESTS, SUBSCRIPTION_PLANS,
-} from '../../shared/mockData';
-import { BookingStatus, Dispute, PayoutRequest } from '../../shared/types';
-
-const salesData = [
-  { name: '22 Feb', sales: 400 },
-  { name: '23 Feb', sales: 300 },
-  { name: '24 Feb', sales: 600 },
-  { name: '25 Feb', sales: 800 },
-  { name: '26 Feb', sales: 500 },
-  { name: '27 Feb', sales: 900 },
-  { name: '28 Feb', sales: 700 },
-];
+import { SUBSCRIPTION_PLANS } from '../../shared/mockData';
+import { api, ApiProvider, ApiDispute, ApiPayoutRequest, ApiAdminStats } from '../../lib/api';
+import { useToast } from '../../shared/Toast';
+import { useAuth } from '../../contexts/AuthContext';
 
 export default function AdminApp() {
+  const { toast } = useToast();
+  const { logout } = useAuth();
   const [activeTab, setActiveTab] = useState('dashboard');
   const [subView, setSubView] = useState<string | null>(null);
 
-  const [disputes, setDisputes] = useState<Dispute[]>(MOCK_DISPUTES);
-  const [payouts, setPayouts] = useState<PayoutRequest[]>(MOCK_PAYOUT_REQUESTS);
-  const [providers, setProviders] = useState(MOCK_PROVIDERS);
+  const [stats, setStats] = useState<ApiAdminStats | null>(null);
+  const [disputes, setDisputes] = useState<ApiDispute[]>([]);
+  const [payouts, setPayouts] = useState<ApiPayoutRequest[]>([]);
+  const [providers, setProviders] = useState<ApiProvider[]>([]);
+  const [revenueData, setRevenueData] = useState<{ date: string; revenue: number }[]>([]);
   const [resolutionInput, setResolutionInput] = useState('');
-  const [selectedDispute, setSelectedDispute] = useState<Dispute | null>(null);
+  const [selectedDispute, setSelectedDispute] = useState<ApiDispute | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    loadAll();
+  }, []);
+
+  async function loadAll() {
+    setLoading(true);
+    try {
+      const [s, d, p, prov, rev] = await Promise.all([
+        api.admin.stats(),
+        api.admin.disputes(),
+        api.admin.payouts(),
+        api.admin.providers(),
+        api.admin.revenue(),
+      ]);
+      setStats(s);
+      setDisputes(d);
+      setPayouts(p);
+      setProviders(prov);
+      setRevenueData(rev.map(r => ({ date: r.date, revenue: r.revenue })));
+    } catch (e: any) {
+      toast(e.message || 'خطأ في تحميل البيانات', 'error');
+    } finally {
+      setLoading(false);
+    }
+  }
 
   const openDisputesCount = disputes.filter(d => d.status === 'OPEN').length;
   const pendingPayoutsCount = payouts.filter(p => p.status === 'PENDING').length;
@@ -43,25 +63,51 @@ export default function AdminApp() {
     { id: 'settings', label: 'الإعدادات', icon: Settings },
   ];
 
-  const toggleVerification = (providerId: string) => {
-    setProviders(prev => prev.map(p =>
-      p.id === providerId ? { ...p, isVerified: !p.isVerified } : p
-    ));
+  const toggleVerification = async (providerId: string) => {
+    try {
+      const res = await api.admin.verifyProvider(providerId);
+      setProviders(prev => prev.map(p =>
+        p.id === providerId ? { ...p, isVerified: res.isVerified } : p
+      ));
+      toast(res.isVerified ? 'تم توثيق المبدعة' : 'تم إلغاء التوثيق', 'success');
+    } catch (e: any) {
+      toast(e.message || 'حدث خطأ', 'error');
+    }
   };
 
-  const resolveDispute = (disputeId: string, resolution: string) => {
-    setDisputes(prev => prev.map(d =>
-      d.id === disputeId ? { ...d, status: 'RESOLVED', resolution } : d
-    ));
-    setSelectedDispute(null);
-    setResolutionInput('');
+  const resolveDispute = async (disputeId: string, resolution: string, favorClient: boolean) => {
+    try {
+      await api.admin.resolveDispute(disputeId, resolution, favorClient);
+      setDisputes(prev => prev.map(d =>
+        d.id === disputeId ? { ...d, status: 'RESOLVED', resolution } : d
+      ));
+      setSelectedDispute(null);
+      setResolutionInput('');
+      toast('تم حل النزاع', 'success');
+    } catch (e: any) {
+      toast(e.message || 'حدث خطأ', 'error');
+    }
   };
 
-  const processPayout = (payoutId: string, approved: boolean) => {
-    setPayouts(prev => prev.map(p =>
-      p.id === payoutId ? { ...p, status: approved ? 'COMPLETED' : 'REJECTED' } : p
-    ));
+  const processPayout = async (payoutId: string, approved: boolean) => {
+    try {
+      const res = await api.admin.processPayout(payoutId, approved);
+      setPayouts(prev => prev.map(p =>
+        p.id === payoutId ? { ...p, status: res.status as any } : p
+      ));
+      toast(approved ? 'تمت الموافقة على السحب' : 'تم رفض السحب', approved ? 'success' : 'info');
+    } catch (e: any) {
+      toast(e.message || 'حدث خطأ', 'error');
+    }
   };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-[#F8F9FA] flex items-center justify-center" dir="rtl">
+        <div className="w-10 h-10 border-4 border-purple-600 border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
 
   // ─── Dashboard ───────────────────────────────────────────────────────────
   const renderDashboard = () => (
@@ -71,7 +117,6 @@ export default function AdminApp() {
           <h2 className="text-2xl font-black tracking-tight">لوحة الإدارة 👑</h2>
           <p className="text-sm text-gray-500">إحصائيات المنصة الشاملة</p>
         </div>
-        {/* Badges */}
         <div className="flex gap-2">
           {openDisputesCount > 0 && (
             <div className="flex items-center gap-1 bg-red-50 text-red-600 text-[10px] font-black px-2 py-1 rounded-xl border border-red-100">
@@ -90,10 +135,10 @@ export default function AdminApp() {
 
       <div className="grid grid-cols-2 gap-4">
         {[
-          { label: 'إجمالي العمولات (2%)', value: '840 ﷼', icon: TrendingUp, color: 'text-green-600', bg: 'bg-green-50' },
-          { label: 'اشتراكات نشطة', value: '1,250 ﷼', icon: CreditCard, color: 'text-blue-600', bg: 'bg-blue-50' },
-          { label: 'تقييم المنصة', value: '4.8/5', icon: Star, color: 'text-orange-600', bg: 'bg-orange-50' },
-          { label: 'عدد المبدعات', value: String(providers.length), icon: Users, color: 'text-purple-600', bg: 'bg-purple-50' },
+          { label: 'إجمالي العمولات (2%)', value: `${(stats?.totalCommissions || 0).toLocaleString()} ﷼`, icon: TrendingUp, color: 'text-green-600', bg: 'bg-green-50' },
+          { label: 'اشتراكات نشطة', value: String(stats?.activeSubscriptions || 0), icon: CreditCard, color: 'text-blue-600', bg: 'bg-blue-50' },
+          { label: 'تقييم المنصة', value: `${stats?.platformRating || 0}/5`, icon: Star, color: 'text-orange-600', bg: 'bg-orange-50' },
+          { label: 'عدد المبدعات', value: String(stats?.providerCount || 0), icon: Users, color: 'text-purple-600', bg: 'bg-purple-50' },
         ].map((stat, i) => (
           <div key={i} className="p-4 bg-white rounded-3xl border border-gray-100 shadow-sm">
             <div className={`w-10 h-10 rounded-xl ${stat.bg} ${stat.color} flex items-center justify-center mb-3`}>
@@ -106,23 +151,24 @@ export default function AdminApp() {
       </div>
 
       {/* Top Providers */}
-      <div className="bg-white p-6 rounded-[32px] border border-gray-100 shadow-sm">
-        <h3 className="font-bold mb-4">أعلى المبدعات دخلاً</h3>
-        <div className="space-y-4">
-          {[
-            { name: 'ليلى للمكياج', income: '4,200 ﷼', commission: '84 ﷼' },
-            { name: 'صالون ريم', income: '3,800 ﷼', commission: '76 ﷼' },
-          ].map((p, i) => (
-            <div key={i} className="flex items-center justify-between p-3 bg-gray-50 rounded-2xl">
-              <div>
-                <p className="font-bold text-sm">{p.name}</p>
-                <p className="text-[10px] text-gray-400">الدخل: {p.income}</p>
+      {stats?.topProviders && stats.topProviders.length > 0 && (
+        <div className="bg-white p-6 rounded-[32px] border border-gray-100 shadow-sm">
+          <h3 className="font-bold mb-4">أعلى المبدعات دخلاً</h3>
+          <div className="space-y-4">
+            {stats.topProviders.map((p, i) => (
+              <div key={i} className="flex items-center justify-between p-3 bg-gray-50 rounded-2xl">
+                <div>
+                  <p className="font-bold text-sm">{p.name}</p>
+                  <p className="text-[10px] text-gray-400">الدخل: {p.totalIncome.toLocaleString()} ﷼</p>
+                </div>
+                <p className="text-xs font-black text-purple-600">
+                  العمولة: {Math.round(p.totalIncome * 0.02).toLocaleString()} ﷼
+                </p>
               </div>
-              <p className="text-xs font-black text-purple-600">العمولة: {p.commission}</p>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Quick Actions */}
       {(openDisputesCount > 0 || pendingPayoutsCount > 0) && (
@@ -170,10 +216,8 @@ export default function AdminApp() {
       <div className="bg-white rounded-[32px] border border-gray-100 shadow-sm divide-y divide-gray-50">
         {providers.map((provider) => (
           <div key={provider.id} className="p-5 flex items-center gap-4">
-            <div className="relative w-12 h-12 shrink-0">
-              <div className="w-12 h-12 rounded-2xl overflow-hidden">
-                <img src={provider.avatar} className="w-full h-full object-cover" alt="" />
-              </div>
+            <div className="w-12 h-12 rounded-2xl overflow-hidden shrink-0">
+              <img src={provider.avatar || `https://picsum.photos/seed/${provider.id}/100/100`} className="w-full h-full object-cover" alt="" />
             </div>
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2">
@@ -208,7 +252,6 @@ export default function AdminApp() {
                   ? 'bg-blue-50 text-blue-600 hover:bg-blue-100'
                   : 'bg-gray-50 text-gray-400 hover:bg-gray-100'
               }`}
-              title={provider.isVerified ? 'إلغاء التوثيق' : 'توثيق المبدعة'}
             >
               {provider.isVerified ? <ShieldCheck size={18} /> : <ShieldOff size={18} />}
             </button>
@@ -247,11 +290,10 @@ export default function AdminApp() {
                 {dispute.status === 'OPEN' ? '● مفتوح — يحتاج حل' : '✓ محلول'}
               </div>
               <div className="p-5">
-                <p className="font-bold text-sm mb-1">الحجز: #{dispute.bookingId}</p>
+                <p className="font-bold text-sm mb-1">الحجز: #{dispute.bookingId.slice(0,8)}</p>
                 <p className="text-xs text-gray-500 mb-3">{dispute.reason}</p>
-                <p className="text-[10px] text-gray-400 mb-4">{dispute.createdAt}</p>
+                <p className="text-[10px] text-gray-400 mb-4">{new Date(dispute.createdAt).toLocaleDateString('ar-SA')}</p>
 
-                {/* Contact Info */}
                 <div className="grid grid-cols-2 gap-3 mb-4">
                   <div className="p-3 bg-blue-50 rounded-2xl">
                     <p className="text-[9px] font-black text-blue-500 mb-1">العميلة</p>
@@ -276,14 +318,14 @@ export default function AdminApp() {
                     />
                     <div className="flex gap-2">
                       <button
-                        onClick={() => resolveDispute(dispute.id, `صالح العميلة — ${resolutionInput}`)}
+                        onClick={() => resolveDispute(dispute.id, `صالح العميلة — ${resolutionInput}`, true)}
                         disabled={!resolutionInput.trim()}
                         className="flex-1 py-3 bg-blue-600 text-white rounded-2xl text-xs font-black disabled:opacity-40"
                       >
                         صالح العميلة
                       </button>
                       <button
-                        onClick={() => resolveDispute(dispute.id, `صالح المبدعة — ${resolutionInput}`)}
+                        onClick={() => resolveDispute(dispute.id, `صالح المبدعة — ${resolutionInput}`, false)}
                         disabled={!resolutionInput.trim()}
                         className="flex-1 py-3 bg-orange-600 text-white rounded-2xl text-xs font-black disabled:opacity-40"
                       >
@@ -333,7 +375,7 @@ export default function AdminApp() {
                 <div>
                   <h4 className="font-bold">{payout.providerName}</h4>
                   <p className="text-[10px] text-gray-400 mt-0.5" dir="ltr">{payout.iban}</p>
-                  <p className="text-[10px] text-gray-400">{payout.createdAt}</p>
+                  <p className="text-[10px] text-gray-400">{new Date(payout.createdAt).toLocaleDateString('ar-SA')}</p>
                 </div>
                 <div className="text-left">
                   <p className="text-2xl font-black text-orange-600">{payout.amount.toLocaleString()} ﷼</p>
@@ -342,8 +384,7 @@ export default function AdminApp() {
                     payout.status === 'COMPLETED' ? 'bg-green-50 text-green-600' :
                     'bg-red-50 text-red-600'
                   }`}>
-                    {payout.status === 'PENDING' ? 'معلّق' :
-                     payout.status === 'COMPLETED' ? 'مكتمل' : 'مرفوض'}
+                    {payout.status === 'PENDING' ? 'معلّق' : payout.status === 'COMPLETED' ? 'مكتمل' : 'مرفوض'}
                   </span>
                 </div>
               </div>
@@ -414,13 +455,6 @@ export default function AdminApp() {
                 </div>
               ))}
             </div>
-            <div className="flex items-center justify-between pt-4 border-t border-gray-50 mt-4">
-              <div className="flex items-center gap-2 text-xs text-gray-500">
-                <Users size={14} />
-                <span>{plan.name === 'برو' ? '1' : plan.name === 'أساسية' ? '1' : '0'} مشترك</span>
-              </div>
-              <button className="text-xs font-bold text-blue-600">تعديل</button>
-            </div>
           </div>
         ))}
       </div>
@@ -440,12 +474,12 @@ export default function AdminApp() {
         <h3 className="font-bold mb-6">نمو الإيرادات</h3>
         <div className="h-[200px]">
           <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={salesData}>
+            <LineChart data={revenueData.length > 0 ? revenueData : [{ date: '-', revenue: 0 }]}>
               <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-              <XAxis dataKey="name" hide />
+              <XAxis dataKey="date" hide />
               <YAxis hide />
               <Tooltip />
-              <Line type="monotone" dataKey="sales" stroke="#8b5cf6" strokeWidth={4} dot={false} />
+              <Line type="monotone" dataKey="revenue" stroke="#8b5cf6" strokeWidth={4} dot={false} />
             </LineChart>
           </ResponsiveContainer>
         </div>
@@ -453,10 +487,10 @@ export default function AdminApp() {
 
       <div className="grid grid-cols-2 gap-4">
         {[
-          { label: 'عمولات هذا الشهر', value: '840 ﷼', color: 'text-green-600' },
-          { label: 'اشتراكات نشطة', value: '2', color: 'text-purple-600' },
-          { label: 'إجمالي الحجوزات', value: String(MOCK_BOOKINGS.length), color: 'text-orange-600' },
-          { label: 'نزاعات محلولة', value: String(MOCK_DISPUTES.filter(d => d.status === 'RESOLVED').length), color: 'text-blue-600' },
+          { label: 'إجمالي العمولات', value: `${(stats?.totalCommissions || 0).toLocaleString()} ﷼`, color: 'text-green-600' },
+          { label: 'اشتراكات نشطة', value: String(stats?.activeSubscriptions || 0), color: 'text-purple-600' },
+          { label: 'إجمالي الحجوزات', value: String(stats?.totalBookings || 0), color: 'text-orange-600' },
+          { label: 'نزاعات مفتوحة', value: String(openDisputesCount), color: 'text-blue-600' },
         ].map((s, i) => (
           <div key={i} className="p-4 bg-white rounded-3xl border border-gray-100 shadow-sm">
             <p className={`text-xs font-bold ${s.color} mb-1`}>{s.label}</p>
@@ -485,10 +519,10 @@ export default function AdminApp() {
               <img src="https://picsum.photos/seed/admin/100/100" alt="" />
             </div>
             <div>
-              <h3 className="font-black text-lg">إدارة ركاز</h3>
+              <h3 className="font-black text-lg">إدارة زينة</h3>
               <p className="text-xs text-white/80">مدير النظام</p>
             </div>
-            <button className="mr-auto p-2 bg-white/20 rounded-xl">
+            <button onClick={logout} className="mr-auto p-2 bg-white/20 rounded-xl">
               <LogOut size={18} />
             </button>
           </div>
@@ -517,7 +551,6 @@ export default function AdminApp() {
     );
   };
 
-  // ─── Return ──────────────────────────────────────────────────────────────
   return (
     <div className="min-h-screen bg-[#F8F9FA] text-[#1A1A1A] font-sans" dir="rtl">
       <main className="px-5 pt-6">
@@ -558,7 +591,6 @@ export default function AdminApp() {
             }`}>
               <item.icon size={22} strokeWidth={activeTab === item.id && !subView ? 2.5 : 2} />
             </div>
-            {/* Disputes badge on nav */}
             {item.id === 'settings' && (openDisputesCount + pendingPayoutsCount) > 0 && (
               <div className="absolute -top-0.5 right-0.5 w-4 h-4 bg-red-500 rounded-full text-white text-[9px] font-black flex items-center justify-center">
                 {openDisputesCount + pendingPayoutsCount}

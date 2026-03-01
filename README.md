@@ -1,20 +1,36 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
+# زينة — منصة حجز خبيرات التجميل
 
-# Run and deploy your AI Studio app
+منصة رقمية متكاملة لحجز خبيرات التجميل ومصففات الشعر، تدعم ثلاثة أدوار: المدير، المبدعة، والعميلة.
 
-This contains everything you need to run your app locally.
+## التشغيل المحلي
 
-View your app in AI Studio: https://ai.studio/apps/5e5bfc2d-4f77-481d-b899-3fc8f69347f7
+**المتطلبات:** Node.js 18+
 
-## Run Locally
+1. تثبيت الاعتماديات:
+   ```bash
+   npm install
+   ```
 
-**Prerequisites:**  Node.js
+2. تشغيل المشروع (الخادم + الواجهة معاً):
+   ```bash
+   npm start
+   ```
 
+3. افتح المتصفح على: `http://localhost:3000`
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+## بيانات تسجيل الدخول التجريبية
+
+| الدور | الطريقة |
+|-------|---------|
+| عميلة | جوال: `0555123456` ← رمز OTP: `1234` |
+| مبدعة | جوال: `0501234567` ← رمز OTP: `1234` |
+| مدير  | كلمة المرور: `admin` |
+
+## السكريبتات
+
+| الأمر | الوظيفة |
+|-------|---------|
+| `npm start` | تشغيل الخادم والواجهة معاً |
+| `npm run dev` | الواجهة فقط (port 3000) |
+| `npm run server` | الخادم فقط (port 3001) |
+| `npm run build` | بناء الإنتاج |

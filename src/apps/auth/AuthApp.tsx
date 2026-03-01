@@ -1,18 +1,19 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Sparkles, ChevronLeft, Shield } from 'lucide-react';
-import { UserRole } from '../../shared/types';
+import { api, ApiUser, setToken } from '../../lib/api';
+import { useToast } from '../../shared/Toast';
 
 type AuthStep = 'welcome' | 'role' | 'phone' | 'otp' | 'provider-setup' | 'admin-login';
 type AuthRole = 'client' | 'provider';
 
-interface Props { onLogin: (role: UserRole) => void; }
+interface Props { onLogin: (user: ApiUser, token: string) => void; }
 
 const SPECIALTIES = [
-  { id: 'makeup', label: 'خبيرة مكياج', emoji: '💄' },
-  { id: 'hair', label: 'مصففة شعر', emoji: '💇‍♀️' },
-  { id: 'skincare', label: 'عناية بالبشرة', emoji: '✨' },
-  { id: 'nails', label: 'متخصصة أظافر', emoji: '💅' },
+  { id: 'خبيرة مكياج', label: 'خبيرة مكياج', emoji: '💄' },
+  { id: 'مصففة شعر', label: 'مصففة شعر', emoji: '💇‍♀️' },
+  { id: 'عناية بالبشرة', label: 'عناية بالبشرة', emoji: '✨' },
+  { id: 'متخصصة أظافر', label: 'متخصصة أظافر', emoji: '💅' },
 ];
 
 const CITIES = ['الرياض', 'جدة', 'الدمام', 'مكة المكرمة', 'المدينة المنورة', 'أبها'];
@@ -25,6 +26,7 @@ const slide = {
 };
 
 export default function AuthApp({ onLogin }: Props) {
+  const { toast } = useToast();
   const [step, setStep] = useState<AuthStep>('welcome');
   const [role, setRole] = useState<AuthRole | null>(null);
   const [phone, setPhone] = useState('');
@@ -35,6 +37,10 @@ export default function AuthApp({ onLogin }: Props) {
   const [adminPwd, setAdminPwd] = useState('');
   const [adminError, setAdminError] = useState(false);
   const [countdown, setCountdown] = useState(0);
+  const [loading, setLoading] = useState(false);
+  // Temp storage for provider setup flow
+  const [pendingUser, setPendingUser] = useState<ApiUser | null>(null);
+  const [pendingToken, setPendingToken] = useState<string>('');
 
   const otpRefs = [
     useRef<HTMLInputElement>(null),
@@ -66,30 +72,71 @@ export default function AuthApp({ onLogin }: Props) {
     if (e.key === 'Backspace' && !otp[i] && i > 0) otpRefs[i - 1].current?.focus();
   };
 
-  const sendOtp = () => {
+  const sendOtp = async () => {
     if (phone.length < 9) return;
-    setOtp(['', '', '', '']);
-    setStep('otp');
-    setCountdown(30);
-    setTimeout(() => otpRefs[0].current?.focus(), 100);
-  };
-
-  const verifyOtp = () => {
-    if (otp.join('') === '1234') {
-      role === 'provider' ? setStep('provider-setup') : onLogin(UserRole.CLIENT);
+    setLoading(true);
+    try {
+      await api.auth.sendOtp(phone);
+      setOtp(['', '', '', '']);
+      setStep('otp');
+      setCountdown(30);
+      setTimeout(() => otpRefs[0].current?.focus(), 100);
+    } catch (e: any) {
+      toast(e.message || 'فشل إرسال الرمز', 'error');
+    } finally {
+      setLoading(false);
     }
   };
 
-  const finishProviderSetup = () => {
-    if (providerName && specialty) onLogin(UserRole.PROVIDER);
+  const verifyOtp = async () => {
+    setLoading(true);
+    try {
+      const { token, user } = await api.auth.verifyOtp(
+        phone, otp.join(''), role || 'client'
+      );
+      if (role === 'provider' && (!user.providerId || !specialty)) {
+        // New provider without specialty — go to setup
+        setPendingUser(user);
+        setPendingToken(token);
+        setToken(token); // set token so updateMe works
+        setStep('provider-setup');
+        setLoading(false);
+        return;
+      }
+      onLogin(user, token);
+    } catch (e: any) {
+      toast(e.message || 'رمز التحقق غير صحيح', 'error');
+      setOtp(['', '', '', '']);
+      otpRefs[0].current?.focus();
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const loginAdmin = () => {
-    if (adminPwd === 'admin') {
-      onLogin(UserRole.ADMIN);
-    } else {
+  const finishProviderSetup = async () => {
+    if (!providerName || !specialty || !pendingUser || !pendingToken) return;
+    setLoading(true);
+    try {
+      // Update provider profile using the already-authenticated token
+      await api.providers.updateMe({ name: providerName, specialty, city });
+      onLogin({ ...pendingUser, name: providerName }, pendingToken);
+    } catch (e: any) {
+      toast(e.message || 'حدث خطأ', 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loginAdmin = async () => {
+    setLoading(true);
+    try {
+      const { token, user } = await api.auth.adminLogin(adminPwd);
+      onLogin(user, token);
+    } catch {
       setAdminError(true);
       setTimeout(() => setAdminError(false), 2000);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -113,7 +160,7 @@ export default function AuthApp({ onLogin }: Props) {
                 <Sparkles className="text-white" size={52} />
               </motion.div>
               <div>
-                <h1 className="text-5xl font-black tracking-tight">ركاز</h1>
+                <h1 className="text-5xl font-black tracking-tight">زينة</h1>
                 <p className="text-gray-500 mt-3 text-base leading-relaxed">
                   منصة حجز خبيرات التجميل<br />ومصففات الشعر
                 </p>
@@ -144,7 +191,7 @@ export default function AuthApp({ onLogin }: Props) {
             <button onClick={() => setStep('welcome')} className="self-start p-2 -mr-2 mb-8 text-gray-600">
               <ChevronLeft size={26} />
             </button>
-            <h2 className="text-3xl font-black mb-2">كيف تستخدمين ركاز؟</h2>
+            <h2 className="text-3xl font-black mb-2">كيف تستخدمين زينة؟</h2>
             <p className="text-gray-500 mb-8">اختاري ما يناسبكِ</p>
 
             <div className="space-y-4 flex-1">
@@ -208,10 +255,10 @@ export default function AuthApp({ onLogin }: Props) {
 
             <button
               onClick={sendOtp}
-              disabled={phone.length < 9}
+              disabled={phone.length < 9 || loading}
               className="w-full bg-black text-white py-5 rounded-3xl font-black disabled:opacity-30 mt-auto"
             >
-              أرسلي رمز التحقق
+              {loading ? '...' : 'أرسلي رمز التحقق'}
             </button>
           </motion.div>
         )}
@@ -257,10 +304,10 @@ export default function AuthApp({ onLogin }: Props) {
 
             <button
               onClick={verifyOtp}
-              disabled={otp.join('').length < 4}
+              disabled={otp.join('').length < 4 || loading}
               className="w-full bg-black text-white py-5 rounded-3xl font-black disabled:opacity-30 mt-auto"
             >
-              تحقق
+              {loading ? '...' : 'تحقق'}
             </button>
           </motion.div>
         )}
@@ -320,10 +367,10 @@ export default function AuthApp({ onLogin }: Props) {
 
             <button
               onClick={finishProviderSetup}
-              disabled={!providerName || !specialty}
+              disabled={!providerName || !specialty || loading}
               className="w-full bg-black text-white py-5 rounded-3xl font-black disabled:opacity-30 mt-6"
             >
-              ابدئي الاستقبال 🚀
+              {loading ? '...' : 'ابدئي الاستقبال 🚀'}
             </button>
           </motion.div>
         )}
@@ -361,10 +408,10 @@ export default function AuthApp({ onLogin }: Props) {
 
             <button
               onClick={loginAdmin}
-              disabled={!adminPwd}
+              disabled={!adminPwd || loading}
               className="w-full bg-purple-600 text-white py-5 rounded-3xl font-black disabled:opacity-30 mt-auto"
             >
-              دخول
+              {loading ? '...' : 'دخول'}
             </button>
           </motion.div>
         )}

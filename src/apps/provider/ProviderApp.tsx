@@ -9,13 +9,11 @@ import {
   ResponsiveContainer, AreaChart, Area, Tooltip,
   BarChart, Bar, CartesianGrid, XAxis, YAxis,
 } from 'recharts';
-import {
-  MOCK_CUSTOMERS, MOCK_SERVICES, MOCK_BOOKINGS, MOCK_REVIEWS,
-  MOCK_WALLET, MOCK_TRANSACTIONS, MOCK_CONVERSATIONS, MOCK_MESSAGES,
-  RIYADH_NEIGHBORHOODS,
-} from '../../shared/mockData';
-import { BookingStatus, UserRole, PaymentStatus, Conversation, Message } from '../../shared/types';
+import { RIYADH_NEIGHBORHOODS } from '../../shared/mockData';
+import { BookingStatus, UserRole, PaymentStatus } from '../../shared/types';
 import { useToast } from '../../shared/Toast';
+import { api, ApiBooking, ApiService, ApiWallet, ApiTransaction, ApiConversation, ApiMessage } from '../../lib/api';
+import { useAuth } from '../../contexts/AuthContext';
 
 const salesData = [
   { name: '22 Feb', sales: 400 },
@@ -48,37 +46,73 @@ const INIT_HOURS = [
 
 export default function ProviderApp() {
   const { toast } = useToast();
+  const { user, logout } = useAuth();
   const [activeTab, setActiveTab] = useState('dashboard');
   const [subView, setSubView] = useState<string | null>(null);
   const [showModal, setShowModal] = useState<string | null>(null);
   const [selectedItem, setSelectedItem] = useState<any>(null);
 
-  const [bookings, setBookings] = useState(MOCK_BOOKINGS);
-  const [customers, setCustomers] = useState(MOCK_CUSTOMERS);
-  const [services, setServices] = useState(MOCK_SERVICES);
+  const [bookings, setBookings] = useState<ApiBooking[]>([]);
+  const [customers, setCustomers] = useState<any[]>([]);
+  const [services, setServices] = useState<ApiService[]>([]);
   const [coupons] = useState([
     { code: 'WELCOME20', discount: '20%', usage: '15/50' },
     { code: 'RAMADAN', discount: '50 ﷼', usage: '120/200' },
   ]);
   const [workingHours, setWorkingHours] = useState(INIT_HOURS);
-  const [wallet, setWallet] = useState(MOCK_WALLET);
-  const [transactions] = useState(MOCK_TRANSACTIONS);
-  const [conversations, setConversations] = useState<Conversation[]>(MOCK_CONVERSATIONS);
-  const [messages, setMessages] = useState<Message[]>(MOCK_MESSAGES);
-  const [activeConversation, setActiveConversation] = useState<Conversation | null>(null);
+  const [wallet, setWallet] = useState<ApiWallet>({ id: '', providerId: '', balance: 0, pendingBalance: 0, totalEarned: 0 });
+  const [transactions, setTransactions] = useState<ApiTransaction[]>([]);
+  const [conversations, setConversations] = useState<ApiConversation[]>([]);
+  const [messages, setMessages] = useState<ApiMessage[]>([]);
+  const [activeConversation, setActiveConversation] = useState<ApiConversation | null>(null);
   const [chatInput, setChatInput] = useState('');
   const [ibanInput, setIbanInput] = useState('');
   const [payoutAmount, setPayoutAmount] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const [dataLoading, setDataLoading] = useState(true);
 
   const [storeInfo, setStoreInfo] = useState({
-    name: 'ليلى للمكياج',
-    specialty: 'خبيرة مكياج',
-    bio: 'خبيرة مكياج احترافية مع أكثر من 5 سنوات خبرة في المناسبات والأفراح. أستخدم أفضل ماركات العالم.',
-    city: 'الرياض',
-    phone: '0501234567',
-    coveredNeighborhoods: ['العليا', 'الملز', 'الروضة', 'الورود', 'النزهة'],
+    name: user?.name || '',
+    specialty: '',
+    bio: '',
+    city: '',
+    phone: user?.phone || '',
+    coveredNeighborhoods: [] as string[],
   });
+
+  useEffect(() => {
+    loadData();
+  }, []);
+
+  async function loadData() {
+    setDataLoading(true);
+    try {
+      const [bkgs, svcs, convs, w, txns] = await Promise.all([
+        api.bookings.list(),
+        api.services.list(),
+        api.conversations.list(),
+        api.wallet.get(),
+        api.wallet.transactions(),
+      ]);
+      setBookings(bkgs);
+      setServices(svcs);
+      setConversations(convs);
+      setWallet(w);
+      setTransactions(txns);
+      // Derive unique customers from bookings
+      const custMap = new Map<string, any>();
+      bkgs.forEach(b => {
+        if (b.customerId && b.customerName && !custMap.has(b.customerId)) {
+          custMap.set(b.customerId, { id: b.customerId, name: b.customerName, phone: '' });
+        }
+      });
+      setCustomers(Array.from(custMap.values()));
+    } catch (e: any) {
+      toast(e.message || 'خطأ في تحميل البيانات', 'error');
+    } finally {
+      setDataLoading(false);
+    }
+  }
 
   const pendingCount = bookings.filter(b => b.status === BookingStatus.PENDING).length;
   const unreadMessages = conversations.reduce((sum, c) => sum + (c.unreadCount || 0), 0);
@@ -108,107 +142,90 @@ export default function ProviderApp() {
     }));
   };
 
-  const handleSendMessage = () => {
+  const handleSendMessage = async () => {
     if (!chatInput.trim() || !activeConversation) return;
-    const newMsg: Message = {
-      id: Math.random().toString(36).slice(2),
-      conversationId: activeConversation.id,
-      senderId: 'p1',
-      senderRole: 'PROVIDER',
-      content: chatInput.trim(),
-      isRead: false,
-      createdAt: new Date().toISOString(),
-    };
-    setMessages([...messages, newMsg]);
-    setConversations(conversations.map(c =>
-      c.id === activeConversation.id
-        ? { ...c, lastMessage: chatInput.trim(), lastMessageAt: new Date().toISOString(), unreadCount: 0 }
-        : c
-    ));
+    const content = chatInput.trim();
     setChatInput('');
+    try {
+      const newMsg = await api.conversations.send(activeConversation.id, content);
+      setMessages(prev => [...prev, newMsg]);
+      setConversations(prev => prev.map(c =>
+        c.id === activeConversation.id
+          ? { ...c, lastMessage: content, lastMessageAt: new Date().toISOString() }
+          : c
+      ));
+    } catch (e: any) {
+      toast(e.message || 'فشل إرسال الرسالة', 'error');
+    }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleOpenConversation = async (conv: ApiConversation) => {
+    setActiveConversation(conv);
+    try {
+      const msgs = await api.conversations.messages(conv.id);
+      setMessages(msgs);
+    } catch { /* ignore */ }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const formData = new FormData(e.target as HTMLFormElement);
     const data = Object.fromEntries(formData.entries());
 
-    if (showModal === 'add_booking') {
-      const servicePrice = services.find(s => s.id === data.serviceId)?.price || 0;
-      const commission = Math.round(servicePrice * 0.02);
-      setBookings([{
-        id: Math.random().toString(36).slice(2),
-        customerId: data.customerId as string,
-        serviceId: data.serviceId as string,
-        providerId: 'p1',
-        date: data.date as string,
-        time: data.time as string,
-        status: BookingStatus.PENDING,
-        paymentStatus: PaymentStatus.UNPAID,
-        servicePrice,
-        commission,
-        totalPrice: servicePrice + commission,
-        clientConfirmed: false,
-        providerConfirmed: false,
-      }, ...bookings]);
-      toast('تم إضافة الحجز بنجاح');
-    } else if (showModal === 'add_customer') {
-      setCustomers([{
-        id: Math.random().toString(36).slice(2),
-        name: data.name as string,
-        phone: data.phone as string,
-        email: data.email as string,
-        role: UserRole.CLIENT,
-        createdAt: new Date().toISOString().split('T')[0],
-      }, ...customers]);
-      toast('تمت إضافة العميلة');
-    } else if (showModal === 'add_service') {
-      setServices([{
-        id: Math.random().toString(36).slice(2),
-        name: data.name as string,
-        description: '',
-        price: Number(data.price),
-        duration: Number(data.duration),
-        category: 'مكياج',
-        isAvailable: true,
-      }, ...services]);
-      toast('تمت إضافة الخدمة');
-    } else if (showModal === 'edit_service') {
-      setServices(services.map(s => s.id === selectedItem.id
-        ? { ...s, name: data.name as string, price: Number(data.price), duration: Number(data.duration) }
-        : s));
-      toast('تم تعديل الخدمة');
-    } else if (showModal === 'confirm_accept_booking') {
-      setBookings(bookings.map(b => b.id === selectedItem.id ? { ...b, status: BookingStatus.CONFIRMED } : b));
-      toast('تم قبول الحجز ✓');
-    } else if (showModal === 'confirm_reject_booking') {
-      setBookings(bookings.map(b => b.id === selectedItem.id ? { ...b, status: BookingStatus.CANCELLED } : b));
-      toast('تم رفض الحجز', 'info');
-    } else if (showModal === 'confirm_delete_service') {
-      setServices(services.filter(s => s.id !== selectedItem.id));
-      toast('تم حذف الخدمة', 'error');
-    } else if (showModal === 'confirm_service_complete') {
-      const updated = bookings.map(b => {
-        if (b.id !== selectedItem.id) return b;
-        const newStatus = b.clientConfirmed ? BookingStatus.COMPLETED : BookingStatus.CONFIRMED;
-        if (b.clientConfirmed) {
-          setWallet(w => ({
-            ...w,
-            balance: w.balance + b.servicePrice,
-            pendingBalance: Math.max(0, w.pendingBalance - b.totalPrice),
-          }));
+    try {
+      if (showModal === 'add_service') {
+        const svc = await api.services.create({
+          name: data.name as string,
+          description: (data.description as string) || '',
+          price: Number(data.price),
+          duration: Number(data.duration),
+          category: (data.category as string) || 'مكياج',
+          isAvailable: true,
+        });
+        setServices(prev => [svc, ...prev]);
+        toast('تمت إضافة الخدمة');
+      } else if (showModal === 'edit_service') {
+        const svc = await api.services.update(selectedItem.id, {
+          name: data.name as string,
+          price: Number(data.price),
+          duration: Number(data.duration),
+        });
+        setServices(prev => prev.map(s => s.id === svc.id ? svc : s));
+        toast('تم تعديل الخدمة');
+      } else if (showModal === 'confirm_accept_booking') {
+        const b = await api.bookings.updateStatus(selectedItem.id, 'CONFIRMED');
+        setBookings(prev => prev.map(x => x.id === b.id ? b : x));
+        toast('تم قبول الحجز ✓');
+      } else if (showModal === 'confirm_reject_booking') {
+        const b = await api.bookings.updateStatus(selectedItem.id, 'CANCELLED');
+        setBookings(prev => prev.map(x => x.id === b.id ? b : x));
+        toast('تم رفض الحجز', 'info');
+      } else if (showModal === 'confirm_delete_service') {
+        await api.services.delete(selectedItem.id);
+        setServices(prev => prev.filter(s => s.id !== selectedItem.id));
+        toast('تم حذف الخدمة', 'error');
+      } else if (showModal === 'confirm_service_complete') {
+        const b = await api.bookings.confirm(selectedItem.id);
+        setBookings(prev => prev.map(x => x.id === b.id ? b : x));
+        if (b.status === 'COMPLETED') {
+          const w = await api.wallet.get();
+          setWallet(w);
           toast('تم تأكيد الخدمة! تمت إضافة المبلغ لمحفظتك ✓');
         } else {
           toast('تم تسجيل تأكيدك — بانتظار تأكيد العميلة ✓');
         }
-        return { ...b, providerConfirmed: true, status: newStatus };
-      });
-      setBookings(updated);
-    } else if (showModal === 'request_payout') {
-      toast('تم إرسال طلب السحب بنجاح! سيصل خلال يوم عمل 💳');
-      setWallet(w => ({ ...w, balance: 0 }));
-      setIbanInput('');
-      setPayoutAmount('');
+      } else if (showModal === 'request_payout') {
+        if (!ibanInput || !payoutAmount) return;
+        await api.wallet.requestPayout(Number(payoutAmount), ibanInput);
+        const w = await api.wallet.get();
+        setWallet(w);
+        toast('تم إرسال طلب السحب بنجاح! سيصل خلال يوم عمل 💳');
+        setIbanInput('');
+        setPayoutAmount('');
+      }
+    } catch (e: any) {
+      toast(e.message || 'حدث خطأ', 'error');
+      return;
     }
 
     handleClose();
@@ -509,7 +526,7 @@ export default function ProviderApp() {
             </div>
             <p className="text-xs text-white/80">{storeInfo.specialty} • {storeInfo.city}</p>
           </div>
-          <button className="p-2 bg-white/20 rounded-xl"><LogOut size={18} /></button>
+          <button onClick={logout} className="p-2 bg-white/20 rounded-xl"><LogOut size={18} /></button>
         </div>
         <div className="p-4 space-y-1">
           {[
@@ -674,7 +691,7 @@ export default function ProviderApp() {
             {conversations.map(conv => (
               <button
                 key={conv.id}
-                onClick={() => setActiveConversation(conv)}
+                onClick={() => handleOpenConversation(conv)}
                 className="w-full p-5 flex items-center gap-4 text-right hover:bg-gray-50 transition-colors"
               >
                 <div className="w-12 h-12 rounded-2xl bg-orange-50 text-orange-600 flex items-center justify-center font-black shrink-0 text-lg">
@@ -836,7 +853,22 @@ export default function ProviderApp() {
       </div>
 
       <button
-        onClick={() => { toast('تم حفظ معلومات المتجر ✓'); setSubView(null); }}
+        onClick={async () => {
+          try {
+            await api.providers.updateMe({
+              name: storeInfo.name,
+              specialty: storeInfo.specialty,
+              bio: storeInfo.bio,
+              city: storeInfo.city,
+              phone: storeInfo.phone,
+              coveredNeighborhoods: storeInfo.coveredNeighborhoods,
+            });
+            toast('تم حفظ معلومات المتجر ✓');
+            setSubView(null);
+          } catch (e: any) {
+            toast(e.message || 'حدث خطأ', 'error');
+          }
+        }}
         className="w-full bg-black text-white py-5 rounded-3xl font-black flex items-center justify-center gap-2"
       >
         <Save size={18} /> حفظ التغييرات
