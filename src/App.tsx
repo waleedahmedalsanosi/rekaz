@@ -9,7 +9,7 @@ import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { motion, AnimatePresence } from 'motion/react';
 
 function AppInner() {
-  const { user, isLoading, login, logout } = useAuth();
+  const { user, isLoading, login, logout, switchRole } = useAuth();
 
   if (isLoading) {
     return (
@@ -40,13 +40,37 @@ function AppInner() {
             exit={{ opacity: 0 }}
             transition={{ duration: 0.25 }}
           >
-            {/* Account switcher */}
+            {/* Account switcher (logout) */}
             <button
               onClick={logout}
               className="fixed top-4 left-4 z-[100] bg-black/10 backdrop-blur-md text-black px-3 py-1.5 rounded-full text-[10px] font-bold hover:bg-black/20 transition-colors"
             >
               تغيير الحساب
             </button>
+
+            {/* Dev role switcher — only in development */}
+            {import.meta.env.DEV && (
+              <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-200 flex gap-1 bg-black/85 backdrop-blur-md rounded-full px-2 py-1.5 shadow-xl">
+                <span className="text-white/40 text-[9px] font-black px-1 self-center">DEV</span>
+                {[
+                  { role: UserRole.CLIENT,   label: 'عميل' },
+                  { role: UserRole.PROVIDER, label: 'مزوّد' },
+                  { role: UserRole.ADMIN,    label: 'مدير' },
+                ].map(({ role, label }) => (
+                  <button
+                    key={role}
+                    onClick={() => switchRole(role)}
+                    className={`px-3 py-1 rounded-full text-[10px] font-black transition-all ${
+                      user?.role === role
+                        ? 'bg-white text-black'
+                        : 'text-white/60 hover:text-white hover:bg-white/10'
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            )}
 
             {user.role === UserRole.ADMIN && <AdminApp />}
             {user.role === UserRole.PROVIDER && <ProviderApp />}

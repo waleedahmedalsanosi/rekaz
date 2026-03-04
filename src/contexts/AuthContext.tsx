@@ -17,6 +17,7 @@ interface AuthContextValue {
   isLoading: boolean;
   login: (apiUser: ApiUser, token: string) => void;
   logout: () => void;
+  switchRole: (role: UserRole) => void;
 }
 
 const AuthContext = createContext<AuthContextValue>({
@@ -24,6 +25,7 @@ const AuthContext = createContext<AuthContextValue>({
   isLoading: true,
   login: () => {},
   logout: () => {},
+  switchRole: () => {},
 });
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
@@ -67,8 +69,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     localStorage.removeItem('token');
   };
 
+  // Dev-only: switch between demo users without re-authenticating
+  const switchRole = (role: UserRole) => {
+    if (!user) return;
+    const demoProfiles: Record<UserRole, Partial<AuthUser>> = {
+      [UserRole.ADMIN]:    { id: 'admin-1',  name: 'المدير',        providerId: undefined },
+      [UserRole.PROVIDER]: { id: 'user-p1',  name: 'ليلى أحمد',    providerId: 'p1' },
+      [UserRole.CLIENT]:   { id: 'user-c1',  name: 'نورة العتيبي', providerId: undefined },
+    };
+    const next: AuthUser = { ...user, ...demoProfiles[role], role };
+    setUser(next);
+    localStorage.setItem('zeina_user', JSON.stringify(next));
+  };
+
   return (
-    <AuthContext.Provider value={{ user, isLoading, login, logout }}>
+    <AuthContext.Provider value={{ user, isLoading, login, logout, switchRole }}>
       {children}
     </AuthContext.Provider>
   );
