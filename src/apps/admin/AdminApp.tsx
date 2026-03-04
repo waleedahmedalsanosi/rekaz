@@ -8,9 +8,9 @@ import { motion, AnimatePresence } from 'motion/react';
 import {
   ResponsiveContainer, Tooltip, LineChart, Line, CartesianGrid, XAxis, YAxis,
 } from 'recharts';
-import { SUBSCRIPTION_PLANS } from '../../shared/mockData';
+import { SUBSCRIPTION_PLANS } from '../../lib/mockData';
 import { api, ApiProvider, ApiDispute, ApiPayoutRequest, ApiAdminStats } from '../../lib/api';
-import { useToast } from '../../shared/Toast';
+import { useToast } from '../../components/Toast';
 import { useAuth } from '../../contexts/AuthContext';
 
 export default function AdminApp() {

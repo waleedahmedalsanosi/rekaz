@@ -1,10 +1,10 @@
 import React from 'react';
-import { UserRole } from './shared/types';
+import { UserRole } from './lib/types';
 import AdminApp from './apps/admin/AdminApp';
 import ProviderApp from './apps/provider/ProviderApp';
 import ClientApp from './apps/client/ClientApp';
 import AuthApp from './apps/auth/AuthApp';
-import { ToastProvider } from './shared/Toast';
+import { ToastProvider } from './components/Toast';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { motion, AnimatePresence } from 'motion/react';
 

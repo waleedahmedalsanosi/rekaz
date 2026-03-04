@@ -9,12 +9,18 @@ Ziena (زينة) is a beauty services booking platform for the Saudi Arabian mar
 ## Commands
 
 ```bash
+# Node.js + React (root)
 npm start              # Dev: runs Express server (port 3001) + Vite frontend (port 3000) concurrently
 npm run dev            # Frontend only (port 3000)
-npm run server:watch   # Backend only with auto-reload
+npm run server:watch   # Express backend only with auto-reload
 npm run build          # Production build to /dist
 npm run start:prod     # Production: serves /dist + /api routes from Express
 npm run lint           # TypeScript type-check (tsc --noEmit)
+
+# .NET 10 backend (from Ziena.Backend/ directory)
+dotnet run --project Ziena.API          # Run the API (http://localhost:5000)
+dotnet build Ziena.Backend.slnx         # Build the full solution
+dotnet ef migrations add <Name> --project Ziena.Infrastructure --startup-project Ziena.API
 ```
 
 No test runner is configured. Type-check with `npm run lint`.
@@ -26,43 +32,99 @@ No test runner is configured. Type-check with `npm run lint`.
 The frontend is a single React SPA that routes to one of four apps based on the authenticated user's role:
 
 ```
-App.tsx → AuthContext
-  ├── Unauthenticated → AuthApp (src/apps/auth/)
-  ├── ADMIN           → AdminApp (src/apps/admin/)
+src/App.tsx → AuthContext
+  ├── Unauthenticated → AuthApp   (src/apps/auth/)
+  ├── ADMIN           → AdminApp  (src/apps/admin/)
   ├── PROVIDER        → ProviderApp (src/apps/provider/)
   └── CLIENT          → ClientApp (src/apps/client/)
 ```
 
-Each role app is a large self-contained file. Shared utilities live in [src/shared/](src/shared/) (types, design system components, mock data, toast). The API client at [src/lib/api.ts](src/lib/api.ts) is the single interface to the backend — all fetch calls go through it.
+Each role app is a large self-contained file. Source layout:
 
-### Backend (Express + Turso)
+```
+src/
+├── apps/          — Role-based sub-apps (one large file per role)
+├── components/    — Shared UI: DesignSystem.tsx, Toast.tsx
+├── contexts/      — AuthContext (user state + role switching)
+├── lib/           — api.ts, types.ts, mockData.ts
+└── assets/        — Static assets
+```
 
-[server/index.ts](server/index.ts) is the Express entry. Routes in [server/routes/](server/routes/) map to:
+The API client at [src/lib/api.ts](src/lib/api.ts) is the single interface to both backends.
+
+### Two-Backend Architecture
+
+The project runs **two backends in parallel**:
+
+| Backend | Tech | Port | Handles |
+|---------|------|------|---------|
+| Node.js/Express | `server/` | 3001 | Auth (OTP), Providers, Services, Messages, Reviews, Admin |
+| .NET 10 (Clean Architecture) | `Ziena.Backend/` | 5000 | Bookings, Wallet, Merchants |
+
+**Frontend API client** ([src/lib/api.ts](src/lib/api.ts)):
+- `api.*` — calls Node.js Express via `/api/...` (Vite proxy → port 3001)
+- `dotnetApi.*` — calls .NET backend via `/dotnet-api/...` (Vite proxy → port 5000)
+- Transition mappers `mapDotNetBookingToApi()` / `mapDotNetWalletToApi()` convert .NET responses to legacy `ApiBooking`/`ApiWallet` shapes so UI components work unchanged during migration
+
+### Node.js / Express Backend (`server/`)
+
+`server/index.ts` is the Express entry. Routes in `server/routes/`:
 - `auth.ts` — OTP login, admin password login, session creation
-- `bookings.ts` — Full booking lifecycle (PENDING → CONFIRMED → COMPLETED)
-- `wallet.ts` — Escrow, earnings, IBAN payout requests
+- `providers.ts` — Provider CRUD & profile management
+- `services.ts` — Service CRUD
+- `bookings.ts` — Legacy booking support (list, status updates, pay, confirm)
+- `messages.ts` — Client-provider messaging
+- `wallet.ts` — Legacy wallet (transactions, IBAN payout requests)
+- `reviews.ts` — Review creation
 - `admin.ts` — Stats, dispute resolution, payout approvals
 
-[server/db.ts](server/db.ts) initializes the schema, wraps the Turso client with async helpers, and seeds demo data on first run.
+`server/db.ts` initializes the schema, wraps the Turso/LibSQL client, and seeds demo data on first run. Uses Turso in production; falls back to `zeina.db` (SQLite file) in development when `TURSO_URL` is not set.
+
+### .NET 10 Backend (`Ziena.Backend/`)
+
+Clean Architecture layers:
+- `Ziena.Domain` — entities and enums (no dependencies)
+- `Ziena.Application` — DTOs (`DTOs/`) and service interfaces (`Interfaces/`)
+- `Ziena.Infrastructure` — EF Core + SQLite (`Persistence/`), service implementations (`Services/`), DI registration (`Extensions/InfrastructureServiceExtensions.cs`)
+- `Ziena.API` — controllers and `Program.cs`
+
+**Controllers:** `BookingsController`, `WalletController`, `MerchantsController`, `AdminController`
+
+SQLite DB (`ziena.db`) is created next to the running binary. Connection string is in `Ziena.API/appsettings.json`.
+
+#### ProviderRefId Bridge Pattern
+
+Node.js providers use string IDs (`"p1"`, `"p2"`). .NET uses GUIDs. The `Merchant.ProviderRefId` field stores the Node.js string ID so both systems share data:
+- Frontend sends `merchantId: "p1"` in booking creation
+- .NET `BookingService` looks up `Merchant` via `ProviderRefId == "p1"` instead of Guid matching
+- `WalletController` route is `{providerRefId}` (string, not `{id:guid}`)
 
 ### Database
 
-Uses Turso (LibSQL) in production; falls back to `zeina.db` (SQLite file) in development when `TURSO_URL` is not set. The async wrapper in `db.ts` provides `db.execute()` / `db.query()` that work with both.
+- **Node.js** uses Turso (LibSQL) in production; `zeina.db` (SQLite) in dev
+- **.NET** uses EF Core with SQLite; `ziena.db` created next to the binary
+- They are **separate databases**; the bridge is `Merchant.ProviderRefId`
+- 2% commission escrow: `ceil(price * 0.02)` withheld on each booking, released on completion
 
-Key business logic: 2% commission escrow — `ceil(price * 0.02)` is withheld on each booking and released to the platform on completion.
+### Vite Proxy (Development)
 
-### Vite Proxy
+```
+/api/*         → http://localhost:3001  (Node.js Express)
+/dotnet-api/*  → http://localhost:5000  (strip /dotnet-api prefix, then .NET)
+```
 
-In development, Vite proxies `/api/*` to `http://localhost:3001`. The frontend always calls `/api/...` — never hardcoded backend URLs.
+In production, `VITE_DOTNET_API_URL` is baked into the React bundle at build time.
 
 ## Environment Variables
 
+See `.env.example` for the full list with descriptions.
+
+Key variables:
+
 ```
-TURSO_URL=libsql://...      # Required in production
-TURSO_TOKEN=...             # Required in production
-NODE_ENV=production
-PORT=3001                   # Default
-GEMINI_API_KEY=...          # Optional (Google AI, not deeply integrated)
+TURSO_URL           — Turso production DB (Node.js)
+TURSO_TOKEN         — Turso JWT (Node.js)
+VITE_DOTNET_API_URL — .NET backend URL baked into React bundle at build time
 ```
 
 ## Demo Credentials
@@ -75,25 +137,16 @@ GEMINI_API_KEY=...          # Optional (Google AI, not deeply integrated)
 
 OTP is hardcoded to `1234` for all users (no real SMS integration).
 
-## Modern Backend (.NET 10)
+## Deployment (Render)
 
-```bash
-# From the Ziena.Backend/ directory:
-dotnet run --project Ziena.API          # Run the API (http://localhost:5000)
-dotnet build Ziena.Backend.slnx         # Build the full solution
-```
-
-The .NET backend lives in `Ziena.Backend/` and follows Clean Architecture:
-- `Ziena.Domain` — entities and enums (no dependencies)
-- `Ziena.Application` — DTOs (`DTOs/`) and service interfaces (`Interfaces/`)
-- `Ziena.Infrastructure` — EF Core + SQLite (`Persistence/`), service implementations (`Services/`), DI registration (`Extensions/InfrastructureServiceExtensions.cs`)
-- `Ziena.API` — controllers and `Program.cs`
-
-SQLite database file (`ziena.db`) is created next to the running binary. Connection string is in `Ziena.API/appsettings.json`. Run EF Core migrations with `dotnet ef` from `Ziena.Backend/` (requires `dotnet ef` tool and `--project Ziena.Infrastructure --startup-project Ziena.API`).
+`render.yaml` defines two services:
+- `zeina` — Node.js web service: `npm run build` + `npm run start:prod`
+- `ziena-dotnet` — Docker service: Dockerfile at `./Ziena.Backend/Dockerfile`, context `./Ziena.Backend`
 
 ## Key Conventions
 
 - Path alias `@/` maps to the project root (configured in both `vite.config.ts` and `tsconfig.json`).
-- All backend routes require `Authorization: Bearer <token>` except auth endpoints. The token is stored in `localStorage` and injected by the API client.
+- All Node.js backend routes require `Authorization: Bearer <token>` except auth endpoints. The token is stored in `localStorage` and injected by the API client.
 - The `users` table has a `role` column (`ADMIN`, `PROVIDER`, `CLIENT`). Creating a provider via OTP auto-creates a row in the `providers` table.
-- Subscription tiers (`FREE`, `BASIC`, `PRO`) exist in the schema but are not fully implemented in the business logic yet.
+- Subscription tiers (`FREE`, `BASIC`, `PRO`) exist in the schema but are not fully implemented in business logic.
+- Dev-only role switcher (floating pill at bottom of screen) is visible only when `import.meta.env.DEV`. Uses `AuthContext.switchRole()`.

@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Sparkles, ChevronLeft, Shield } from 'lucide-react';
 import { api, ApiUser, setToken } from '../../lib/api';
-import { useToast } from '../../shared/Toast';
+import { useToast } from '../../components/Toast';
 
 type AuthStep = 'welcome' | 'role' | 'phone' | 'otp' | 'provider-setup' | 'admin-login';
 type AuthRole = 'client' | 'provider';

@@ -69,6 +69,6 @@ public class BookingService(ZienaDbContext context) : IBookingService
             booking.Status.ToString(),
             booking.TotalPrice,
             booking.EscrowAmount,
-            booking.ScheduledAt.ToString("o")
+            booking.ScheduledAt
         );
 }

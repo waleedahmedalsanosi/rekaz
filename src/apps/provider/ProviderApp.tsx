@@ -9,9 +9,9 @@ import {
   ResponsiveContainer, AreaChart, Area, Tooltip,
   BarChart, Bar, CartesianGrid, XAxis, YAxis,
 } from 'recharts';
-import { RIYADH_NEIGHBORHOODS } from '../../shared/mockData';
-import { BookingStatus, UserRole, PaymentStatus } from '../../shared/types';
-import { useToast } from '../../shared/Toast';
+import { RIYADH_NEIGHBORHOODS } from '../../lib/mockData';
+import { BookingStatus, UserRole, PaymentStatus } from '../../lib/types';
+import { useToast } from '../../components/Toast';
 import { api, dotnetApi, ApiBooking, ApiService, ApiTransaction, ApiConversation, ApiMessage, DotNetWalletDto } from '../../lib/api';
 import { useAuth } from '../../contexts/AuthContext';
 

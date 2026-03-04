@@ -5,9 +5,9 @@ import {
   CheckCircle, Send, MapPin, ShieldCheck, AlertCircle,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { RIYADH_NEIGHBORHOODS } from '../../shared/mockData';
-import { BookingStatus, PaymentStatus } from '../../shared/types';
-import { useToast } from '../../shared/Toast';
+import { RIYADH_NEIGHBORHOODS } from '../../lib/mockData';
+import { BookingStatus, PaymentStatus } from '../../lib/types';
+import { useToast } from '../../components/Toast';
 import { api, dotnetApi, DotNetMerchantDto, ApiProvider, ApiService, ApiBooking, ApiConversation, ApiMessage, ApiReview } from '../../lib/api';
 import { useAuth } from '../../contexts/AuthContext';
 
