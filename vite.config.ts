@@ -22,6 +22,13 @@ export default defineConfig(({mode}) => {
           target: 'http://localhost:3001',
           changeOrigin: true,
         },
+        // .NET 10 backend — proxied in dev to avoid CORS.
+        // In production VITE_DOTNET_API_URL is set in the Render dashboard.
+        '/dotnet-api': {
+          target: env.VITE_DOTNET_API_URL || 'http://localhost:5000',
+          changeOrigin: true,
+          rewrite: (path) => path.replace(/^\/dotnet-api/, ''),
+        },
       },
     },
   };

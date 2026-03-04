@@ -28,3 +28,7 @@ Thumbs.db
 
 # Temp
 prd_extracted.txt
+
+# .NET build artifacts
+**/obj/
+**/bin/

@@ -141,16 +141,15 @@ export default function ClientApp() {
       if (showModal === 'add_booking') {
         const neighborhood = selectedNeighborhood || (data.neighborhood as string);
         if (!neighborhood) { toast('يرجى اختيار الحي', 'error'); return; }
+        // .NET booking — escrow is captured at creation; no separate pay step needed.
         const booking = await api.bookings.create({
-          serviceId: selectedItem.id,
-          providerId: selectedItem.providerId,
-          date: data.date as string,
-          time: data.time as string,
-          neighborhood,
+          clientId:    user!.id,
+          merchantId:  selectedItem.providerId,
+          serviceId:   selectedItem.id,
+          scheduledAt: `${data.date as string}T${data.time as string}:00.000Z`,
+          totalPrice:  selectedItem.price,
         });
-        // Auto-pay
-        const paid = await api.bookings.pay(booking.id);
-        setBookings(prev => [paid, ...prev]);
+        setBookings(prev => [booking, ...prev]);
         toast('تم إرسال طلب الحجز! سيتم تأكيده قريباً ✓');
       } else if (showModal === 'process_payment') {
         const paid = await api.bookings.pay(selectedItem.id);

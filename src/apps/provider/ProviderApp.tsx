@@ -12,7 +12,7 @@ import {
 import { RIYADH_NEIGHBORHOODS } from '../../shared/mockData';
 import { BookingStatus, UserRole, PaymentStatus } from '../../shared/types';
 import { useToast } from '../../shared/Toast';
-import { api, ApiBooking, ApiService, ApiWallet, ApiTransaction, ApiConversation, ApiMessage } from '../../lib/api';
+import { api, dotnetApi, ApiBooking, ApiService, ApiTransaction, ApiConversation, ApiMessage, DotNetWalletDto } from '../../lib/api';
 import { useAuth } from '../../contexts/AuthContext';
 
 const salesData = [
@@ -60,7 +60,7 @@ export default function ProviderApp() {
     { code: 'RAMADAN', discount: '50 ﷼', usage: '120/200' },
   ]);
   const [workingHours, setWorkingHours] = useState(INIT_HOURS);
-  const [wallet, setWallet] = useState<ApiWallet>({ id: '', providerId: '', balance: 0, pendingBalance: 0, totalEarned: 0 });
+  const [wallet, setWallet] = useState<DotNetWalletDto>({ merchantId: '', availableBalance: 0, pendingBalance: 0 });
   const [transactions, setTransactions] = useState<ApiTransaction[]>([]);
   const [conversations, setConversations] = useState<ApiConversation[]>([]);
   const [messages, setMessages] = useState<ApiMessage[]>([]);
@@ -91,7 +91,7 @@ export default function ProviderApp() {
         api.bookings.list(),
         api.services.list(),
         api.conversations.list(),
-        api.wallet.get(),
+        dotnetApi.wallet.get(user?.providerId ?? ''),
         api.wallet.transactions(),
       ]);
       setBookings(bkgs);
@@ -205,19 +205,19 @@ export default function ProviderApp() {
         setServices(prev => prev.filter(s => s.id !== selectedItem.id));
         toast('تم حذف الخدمة', 'error');
       } else if (showModal === 'confirm_service_complete') {
-        const b = await api.bookings.confirm(selectedItem.id);
-        setBookings(prev => prev.map(x => x.id === b.id ? b : x));
-        if (b.status === 'COMPLETED') {
-          const w = await api.wallet.get();
-          setWallet(w);
-          toast('تم تأكيد الخدمة! تمت إضافة المبلغ لمحفظتك ✓');
-        } else {
-          toast('تم تسجيل تأكيدك — بانتظار تأكيد العميلة ✓');
-        }
+        // .NET atomically marks the booking Completed and credits the wallet.
+        const updatedWallet = await dotnetApi.wallet.completeBooking(selectedItem.id);
+        setWallet(updatedWallet);
+        // Reflect completion in local booking list so the button disappears.
+        setBookings(prev => prev.map(x =>
+          x.id === selectedItem.id ? { ...x, status: 'COMPLETED' } : x
+        ));
+        const credited = (selectedItem.totalPrice ?? 0).toLocaleString();
+        toast(`تم تأكيد الخدمة! تمت إضافة ${credited} ﷼ لمحفظتك ✓`);
       } else if (showModal === 'request_payout') {
         if (!ibanInput || !payoutAmount) return;
         await api.wallet.requestPayout(Number(payoutAmount), ibanInput);
-        const w = await api.wallet.get();
+        const w = await dotnetApi.wallet.get(user?.providerId ?? '');
         setWallet(w);
         toast('تم إرسال طلب السحب بنجاح! سيصل خلال يوم عمل 💳');
         setIbanInput('');
@@ -246,7 +246,7 @@ export default function ProviderApp() {
 
       <div className="flex gap-4 overflow-x-auto pb-2 no-scrollbar -mx-4 px-4">
         {[
-          { label: 'صافي الدخل', value: `${wallet.balance.toLocaleString()} ﷼`, icon: TrendingUp, color: 'text-green-600', bg: 'bg-green-50' },
+          { label: 'صافي الدخل', value: `${wallet.availableBalance.toLocaleString()} ﷼`, icon: TrendingUp, color: 'text-green-600', bg: 'bg-green-50' },
           { label: 'معلّق', value: `${wallet.pendingBalance} ﷼`, icon: Clock, color: 'text-orange-600', bg: 'bg-orange-50' },
           { label: 'الحجوزات', value: String(bookings.length), icon: Calendar, color: 'text-orange-600', bg: 'bg-orange-50' },
           { label: 'تقييمك', value: '4.9/5', icon: Star, color: 'text-yellow-600', bg: 'bg-yellow-50' },
@@ -571,10 +571,10 @@ export default function ProviderApp() {
       <div className="grid grid-cols-2 gap-4">
         <div className="bg-gradient-to-br from-orange-500 to-orange-600 p-5 rounded-4xl text-white col-span-2">
           <p className="text-xs text-white/80 font-bold mb-1">الرصيد المتاح للسحب</p>
-          <h2 className="text-4xl font-black">{wallet.balance.toLocaleString()} <span className="text-2xl">﷼</span></h2>
+          <h2 className="text-4xl font-black">{wallet.availableBalance.toLocaleString()} <span className="text-2xl">﷼</span></h2>
           <button
             onClick={() => setShowModal('request_payout')}
-            disabled={wallet.balance === 0}
+            disabled={wallet.availableBalance === 0}
             className="mt-4 px-5 py-2.5 bg-white text-orange-600 rounded-2xl text-sm font-black disabled:opacity-50"
           >
             سحب الأرباح
@@ -586,7 +586,7 @@ export default function ProviderApp() {
         </div>
         <div className="bg-white p-4 rounded-3xl border border-gray-100 shadow-sm">
           <p className="text-[10px] text-gray-400 font-bold">إجمالي الأرباح</p>
-          <h3 className="text-xl font-black mt-1">{wallet.totalEarned.toLocaleString()} ﷼</h3>
+          <h3 className="text-xl font-black mt-1">{(wallet.availableBalance + wallet.pendingBalance).toLocaleString()} ﷼</h3>
         </div>
       </div>
 
@@ -1029,7 +1029,7 @@ export default function ProviderApp() {
                 <div className="space-y-4">
                   <div className="p-4 bg-orange-50 rounded-2xl">
                     <p className="text-xs text-gray-500">الرصيد المتاح</p>
-                    <p className="text-2xl font-black text-orange-600">{wallet.balance.toLocaleString()} ﷼</p>
+                    <p className="text-2xl font-black text-orange-600">{wallet.availableBalance.toLocaleString()} ﷼</p>
                   </div>
                   <div>
                     <label className="text-xs font-bold text-gray-400 mb-1.5 block">رقم الآيبان (IBAN)</label>
@@ -1047,9 +1047,9 @@ export default function ProviderApp() {
                     <input
                       value={payoutAmount}
                       onChange={e => setPayoutAmount(e.target.value)}
-                      placeholder={`الحد الأقصى ${wallet.balance}`}
+                      placeholder={`الحد الأقصى ${wallet.availableBalance}`}
                       type="number"
-                      max={wallet.balance}
+                      max={wallet.availableBalance}
                       required
                       className="w-full bg-gray-50 border-none rounded-2xl px-4 py-4 font-bold focus:outline-none focus:ring-2 focus:ring-orange-400"
                     />

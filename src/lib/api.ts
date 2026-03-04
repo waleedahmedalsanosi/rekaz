@@ -75,8 +75,11 @@ export const api = {
   // ─── Bookings ───────────────────────────────────────────────────────────
   bookings: {
     list: () => request<ApiBooking[]>('GET', '/bookings'),
-    create: (data: { serviceId: string; providerId: string; date: string; time: string; neighborhood?: string }) =>
-      request<ApiBooking>('POST', '/bookings', data),
+    // Routes to .NET POST /api/bookings — escrow is captured at creation time.
+    // Response is mapped back to ApiBooking so existing UI state is unaffected.
+    create: (data: DotNetBookingCreateDto) =>
+      dotnetRequest<DotNetBookingResponseDto>('POST', '/bookings', data)
+        .then(mapDotNetBookingToApi),
     updateStatus: (id: string, status: string) =>
       request<ApiBooking>('PATCH', `/bookings/${id}/status`, { status }),
     pay: (id: string) =>
@@ -98,7 +101,11 @@ export const api = {
 
   // ─── Wallet ─────────────────────────────────────────────────────────────
   wallet: {
-    get: () => request<ApiWallet>('GET', '/wallet'),
+    // Routes to .NET GET /api/wallet/{merchantId}.
+    // Response is mapped back to ApiWallet so existing UI state is unaffected.
+    get: (merchantId: string) =>
+      dotnetRequest<DotNetWalletDto>('GET', `/wallet/${merchantId}`)
+        .then(mapDotNetWalletToApi),
     transactions: () => request<ApiTransaction[]>('GET', '/wallet/transactions'),
     requestPayout: (amount: number, iban: string) =>
       request<{ id: string; status: string }>('POST', '/wallet/payout', { amount, iban }),
@@ -265,6 +272,135 @@ export interface ApiPayoutRequest {
   iban: string;
   status: 'PENDING' | 'COMPLETED' | 'REJECTED';
   createdAt: string;
+}
+
+// ─── .NET Backend client ─────────────────────────────────────────────────
+// Dev:  requests go to /dotnet-api which Vite proxies to http://localhost:5000
+// Prod: VITE_DOTNET_API_URL is set in the Render dashboard (build-time bake-in)
+const DOTNET_BASE = import.meta.env.VITE_DOTNET_API_URL
+  ? `${import.meta.env.VITE_DOTNET_API_URL}/api`
+  : '/dotnet-api/api';
+
+async function dotnetRequest<T>(method: string, path: string, body?: unknown): Promise<T> {
+  let res: Response;
+  try {
+    res = await fetch(`${DOTNET_BASE}${path}`, {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+    });
+  } catch {
+    throw new Error('تعذّر الاتصال بخادم زينة (.NET). تأكد من تشغيل dotnet run');
+  }
+
+  if (!res.ok) {
+    let msg = 'حدث خطأ';
+    try { msg = (await res.json()).messageAr || msg; } catch { /* ignore */ }
+    throw new Error(msg);
+  }
+
+  if (res.status === 204) return undefined as T;
+  return res.json();
+}
+
+// ─── Transition mappers ───────────────────────────────────────────────────
+// Convert .NET responses into the legacy ApiBooking / ApiWallet shapes so
+// UI components that haven't been migrated yet continue to work unchanged.
+
+export function mapDotNetBookingToApi(dto: DotNetBookingResponseDto): ApiBooking {
+  // scheduledAt is ISO 8601, e.g. "2024-06-15T14:30:00.0000000"
+  const [datePart = '', timePart = ''] = dto.scheduledAt.split('T');
+  return {
+    id:               dto.id,
+    customerId:       '',                          // not exposed by .NET — identity lives in auth context
+    customerName:     dto.clientName,
+    serviceId:        '',                          // not in .NET response
+    providerId:       '',                          // not in .NET response
+    providerName:     dto.merchantName,
+    date:             datePart,
+    time:             timePart.slice(0, 5),        // "HH:mm"
+    status:           dto.status.toUpperCase(),    // "Pending" → "PENDING"
+    paymentStatus:    'PAID',                      // escrow captured at creation
+    servicePrice:     dto.totalPrice,
+    commission:       dto.escrowAmount,
+    totalPrice:       dto.totalPrice,
+  };
+}
+
+export function mapDotNetWalletToApi(dto: DotNetWalletDto): ApiWallet {
+  return {
+    id:             dto.merchantId,
+    providerId:     dto.merchantId,
+    balance:        dto.availableBalance,
+    pendingBalance: dto.pendingBalance,
+    totalEarned:    dto.availableBalance + dto.pendingBalance,
+  };
+}
+
+export const dotnetApi = {
+  admin: {
+    platformStats: () =>
+      dotnetRequest<DotNetPlatformStatsDto>('GET', '/admin/stats'),
+  },
+  bookings: {
+    create: (dto: DotNetBookingCreateDto) =>
+      dotnetRequest<DotNetBookingResponseDto>('POST', '/bookings', dto),
+    merchantBookings: (merchantId: string) =>
+      dotnetRequest<DotNetBookingResponseDto[]>('GET', `/bookings/merchant/${merchantId}`),
+  },
+  wallet: {
+    get: (merchantId: string) =>
+      dotnetRequest<DotNetWalletDto>('GET', `/wallet/${merchantId}`),
+    completeBooking: (bookingId: string) =>
+      dotnetRequest<DotNetWalletDto>('POST', `/wallet/complete-booking/${bookingId}`),
+  },
+};
+
+// ─── .NET Backend DTOs (Ziena.Backend — port 5000) ───────────────────────
+// These types mirror the C# records in Ziena.Application/DTOs exactly,
+// serialised to camelCase by System.Text.Json (ASP.NET Core default).
+// Keep in sync with: Ziena.Backend/Ziena.Application/DTOs/
+
+export interface DotNetMerchantDto {
+  id: string;
+  businessName: string;
+  bio: string | null;
+  isVerified: boolean;
+  commissionRate: number;       // e.g. 0.02 = 2%
+}
+
+/** POST /api/bookings — request body */
+export interface DotNetBookingCreateDto {
+  clientId: string;
+  merchantId: string;
+  serviceId: string;
+  scheduledAt: string;          // ISO 8601 datetime
+  totalPrice: number;
+}
+
+/** POST /api/bookings — response body */
+export interface DotNetBookingResponseDto {
+  id: string;
+  clientName: string;
+  merchantName: string;
+  status: string;               // "Pending" | "Confirmed" | "Completed" | "Cancelled" | "Disputed"
+  totalPrice: number;
+  escrowAmount: number;         // Math.Ceiling(totalPrice * commissionRate)
+  scheduledAt: string;          // ISO 8601 datetime
+}
+
+/** GET /api/wallet/{merchantId} · POST /api/wallet/complete-booking/{bookingId} */
+export interface DotNetWalletDto {
+  merchantId: string;
+  availableBalance: number;     // totalEarnings - commissionDeducted
+  pendingBalance: number;       // sum of totalPrice for Confirmed bookings
+}
+
+/** GET /api/admin/stats */
+export interface DotNetPlatformStatsDto {
+  totalMerchants: number;
+  totalBookings: number;
+  totalPlatformRevenue: number; // sum of EscrowAmount for all Completed bookings
 }
 
 export interface ApiAdminStats {

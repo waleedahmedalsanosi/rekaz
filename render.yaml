@@ -1,4 +1,5 @@
 services:
+  # ── React + Express frontend ───────────────────────────────────────────────
   - type: web
     name: zeina
     runtime: node
@@ -8,6 +9,25 @@ services:
     envVars:
       - key: NODE_ENV
         value: production
+      - key: TURSO_URL
+        sync: false
+      - key: TURSO_TOKEN
+        sync: false
+      # Set this to the deployed .NET service URL after first deploy, e.g.:
+      # https://ziena-dotnet.onrender.com
+      - key: VITE_DOTNET_API_URL
+        sync: false
+
+  # ── .NET 10 Clean Architecture backend ────────────────────────────────────
+  - type: web
+    name: ziena-dotnet
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Ziena.Backend/Dockerfile
+    dockerContext: ./Ziena.Backend
+    envVars:
+      - key: ASPNETCORE_ENVIRONMENT
+        value: Production
       - key: TURSO_URL
         sync: false
       - key: TURSO_TOKEN

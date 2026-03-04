@@ -1,0 +1,6 @@
+<Solution>
+  <Project Path="Ziena.API/Ziena.API.csproj" />
+  <Project Path="Ziena.Application/Ziena.Application.csproj" />
+  <Project Path="Ziena.Domain/Ziena.Domain.csproj" />
+  <Project Path="Ziena.Infrastructure/Ziena.Infrastructure.csproj" />
+</Solution>
