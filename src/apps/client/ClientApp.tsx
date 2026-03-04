@@ -8,7 +8,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { RIYADH_NEIGHBORHOODS } from '../../shared/mockData';
 import { BookingStatus, PaymentStatus } from '../../shared/types';
 import { useToast } from '../../shared/Toast';
-import { api, ApiProvider, ApiService, ApiBooking, ApiConversation, ApiMessage, ApiReview } from '../../lib/api';
+import { api, dotnetApi, DotNetMerchantDto, ApiProvider, ApiService, ApiBooking, ApiConversation, ApiMessage, ApiReview } from '../../lib/api';
 import { useAuth } from '../../contexts/AuthContext';
 
 const CATEGORIES = ['الكل', 'مكياج', 'شعر'];
@@ -29,12 +29,14 @@ export default function ClientApp() {
   const [selectedNeighborhood, setSelectedNeighborhood] = useState('');
 
   const [providers, setProviders] = useState<ApiProvider[]>([]);
+  const [dotnetMerchants, setDotnetMerchants] = useState<DotNetMerchantDto[]>([]);
   const [bookings, setBookings] = useState<ApiBooking[]>([]);
   const [services, setServices] = useState<ApiService[]>([]);
   const [conversations, setConversations] = useState<ApiConversation[]>([]);
   const [messages, setMessages] = useState<ApiMessage[]>([]);
   const [activeConversation, setActiveConversation] = useState<ApiConversation | null>(null);
   const [chatInput, setChatInput] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
   const [dataLoading, setDataLoading] = useState(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -55,6 +57,8 @@ export default function ClientApp() {
       setServices(svcs);
       setBookings(bkgs);
       setConversations(convs);
+      // Load .NET merchants in background — used to enrich search with businessName
+      dotnetApi.merchants.getAll().then(setDotnetMerchants).catch(() => {});
     } catch (e: any) {
       toast(e.message || 'خطأ في تحميل البيانات', 'error');
     } finally {
@@ -62,9 +66,33 @@ export default function ClientApp() {
     }
   }
 
-  const filteredServices = categoryFilter
-    ? services.filter(s => s.category === categoryFilter)
-    : services;
+  // Build a businessName lookup: providerRefId → businessName (from .NET)
+  const businessNameMap = Object.fromEntries(
+    dotnetMerchants
+      .filter(m => m.providerRefId)
+      .map(m => [m.providerRefId as string, m.businessName])
+  );
+
+  const q = searchQuery.trim().toLowerCase();
+
+  const filteredProviders = q
+    ? providers.filter(p =>
+        (businessNameMap[p.id] || p.name).toLowerCase().includes(q) ||
+        (p.specialty || '').toLowerCase().includes(q) ||
+        (p.city || '').toLowerCase().includes(q)
+      )
+    : providers;
+
+  const filteredServices = (() => {
+    const byCat = categoryFilter ? services.filter(s => s.category === categoryFilter) : services;
+    return q
+      ? byCat.filter(s =>
+          s.name.toLowerCase().includes(q) ||
+          s.category.toLowerCase().includes(q) ||
+          (s.description || '').toLowerCase().includes(q)
+        )
+      : byCat;
+  })();
 
   const bottomNavItems = [
     { id: 'dashboard', label: 'الرئيسية', icon: Home },
@@ -186,16 +214,26 @@ export default function ClientApp() {
       <div className="relative">
         <Search className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
         <input
+          value={searchQuery}
+          onChange={e => setSearchQuery(e.target.value)}
           placeholder="ابحثي عن خبيرة أو خدمة..."
           className="w-full bg-white border border-gray-100 rounded-3xl px-12 py-4 text-sm shadow-sm focus:ring-2 focus:ring-blue-400 focus:outline-none transition-all"
         />
+        {searchQuery && (
+          <button
+            onClick={() => setSearchQuery('')}
+            className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-xs font-bold"
+          >✕</button>
+        )}
       </div>
 
       {/* Providers */}
       <div className="space-y-3">
-        <h3 className="font-bold">أفضل خبيرات التجميل</h3>
+        <h3 className="font-bold">
+          {q ? `نتائج البحث (${filteredProviders.length})` : 'أفضل خبيرات التجميل'}
+        </h3>
         <div className="flex gap-4 overflow-x-auto no-scrollbar -mx-4 px-4">
-          {providers.map((provider) => (
+          {filteredProviders.map((provider) => (
             <button
               key={provider.id}
               onClick={async () => {

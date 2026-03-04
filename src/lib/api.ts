@@ -342,6 +342,10 @@ export const dotnetApi = {
     platformStats: () =>
       dotnetRequest<DotNetPlatformStatsDto>('GET', '/admin/stats'),
   },
+  merchants: {
+    getAll: () =>
+      dotnetRequest<DotNetMerchantDto[]>('GET', '/merchants'),
+  },
   bookings: {
     create: (dto: DotNetBookingCreateDto) =>
       dotnetRequest<DotNetBookingResponseDto>('POST', '/bookings', dto),
@@ -367,6 +371,7 @@ export interface DotNetMerchantDto {
   bio: string | null;
   isVerified: boolean;
   commissionRate: number;       // e.g. 0.02 = 2%
+  providerRefId: string | null; // Node.js provider ID bridge (e.g. "p1")
 }
 
 /** POST /api/bookings — request body */

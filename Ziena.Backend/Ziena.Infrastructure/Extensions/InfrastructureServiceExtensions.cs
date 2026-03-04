@@ -19,6 +19,7 @@ public static class InfrastructureServiceExtensions
         services.AddScoped<IBookingService, BookingService>();
         services.AddScoped<IWalletService, WalletService>();
         services.AddScoped<IAdminService, AdminService>();
+        services.AddScoped<IMerchantService, MerchantService>();
 
         return services;
     }
