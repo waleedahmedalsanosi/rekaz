@@ -372,7 +372,8 @@ export interface DotNetMerchantDto {
 /** POST /api/bookings — request body */
 export interface DotNetBookingCreateDto {
   clientId: string;
-  merchantId: string;
+  clientName: string;           // display name — client may not exist in .NET DB
+  merchantId: string;           // Node.js provider ID (e.g. "p1") resolved via ProviderRefId
   serviceId: string;
   scheduledAt: string;          // ISO 8601 datetime
   totalPrice: number;

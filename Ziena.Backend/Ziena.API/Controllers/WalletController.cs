@@ -8,21 +8,20 @@ namespace Ziena.API.Controllers;
 [Route("api/wallet")]
 public class WalletController(IWalletService walletService) : ControllerBase
 {
-    // GET api/wallet/{merchantId}
-    [HttpGet("{merchantId:guid}")]
+    // GET api/wallet/{providerRefId}  — accepts Node.js provider ID (e.g. "p1")
+    [HttpGet("{providerRefId}")]
     [ProducesResponseType(typeof(WalletDto), StatusCodes.Status200OK)]
-    public async Task<IActionResult> GetWallet(Guid merchantId)
+    public async Task<IActionResult> GetWallet(string providerRefId)
     {
         try
         {
-            var wallet = await walletService.GetWalletAsync(merchantId);
+            var wallet = await walletService.GetWalletByProviderRefAsync(providerRefId);
             return Ok(wallet);
         }
         catch (KeyNotFoundException)
         {
-            // New merchants have no wallet row yet — return zero balances
-            // instead of an error so the UI always has a usable state.
-            return Ok(new WalletDto(merchantId, AvailableBalance: 0m, PendingBalance: 0m));
+            // Unknown provider ref — return zero balances so the UI has a usable state.
+            return Ok(new WalletDto(Guid.Empty, AvailableBalance: 0m, PendingBalance: 0m));
         }
         catch (Exception ex)
         {

@@ -2,9 +2,11 @@ namespace Ziena.Domain.Entities;
 
 public class Booking : BaseEntity
 {
-    public required Guid ClientId { get; set; }
+    /// <summary>Node.js user ID (e.g. "user-c1") — not a FK to the .NET Users table.</summary>
+    public required string ClientId { get; set; }
     public required Guid MerchantId { get; set; }
-    public required Guid ServiceId { get; set; }
+    /// <summary>Node.js service ID (e.g. "s1") — no Services table in .NET.</summary>
+    public required string ServiceId { get; set; }
     public BookingStatus Status { get; set; } = BookingStatus.Pending;
     public required DateTime ScheduledAt { get; set; }
 

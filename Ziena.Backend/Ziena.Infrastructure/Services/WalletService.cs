@@ -15,19 +15,24 @@ public class WalletService(ZienaDbContext context) : IWalletService
             .FirstOrDefaultAsync(w => w.MerchantId == merchantId)
             ?? throw new KeyNotFoundException($"Wallet for merchant {merchantId} not found.");
 
-        // PendingBalance: money in-flight — includes both Pending (awaiting provider
-        // confirmation) and Confirmed (service booked, awaiting completion) bookings.
         var pendingBalance = await context.Bookings
             .AsNoTracking()
             .Where(b => b.MerchantId == merchantId &&
                         (b.Status == BookingStatus.Pending || b.Status == BookingStatus.Confirmed))
             .SumAsync(b => b.TotalPrice);
 
-        return new WalletDto(
-            wallet.MerchantId,
-            wallet.AvailableBalance,   // TotalEarnings - CommissionDeducted (computed)
-            pendingBalance
-        );
+        return new WalletDto(wallet.MerchantId, wallet.AvailableBalance, pendingBalance);
+    }
+
+    public async Task<WalletDto> GetWalletByProviderRefAsync(string providerRefId)
+    {
+        var merchant = await context.Merchants
+            .AsNoTracking()
+            .FirstOrDefaultAsync(m => m.ProviderRefId == providerRefId)
+            ?? throw new KeyNotFoundException(
+                $"Merchant with ProviderRefId '{providerRefId}' not found.");
+
+        return await GetWalletAsync(merchant.Id);
     }
 
     public async Task<WalletDto> ProcessCompletionAsync(Guid bookingId)
@@ -44,29 +49,21 @@ public class WalletService(ZienaDbContext context) : IWalletService
             ?? throw new KeyNotFoundException(
                 $"Wallet for merchant {booking.MerchantId} not found.");
 
-        // Credit the merchant's wallet
         wallet.TotalEarnings      += booking.TotalPrice;
         wallet.CommissionDeducted += booking.EscrowAmount;
         wallet.UpdatedAt           = DateTime.UtcNow;
 
-        // Mark the booking as completed in the same transaction
         booking.Status    = BookingStatus.Completed;
         booking.UpdatedAt = DateTime.UtcNow;
 
         await context.SaveChangesAsync();
 
-        // Re-calculate PendingBalance after the status change (this booking
-        // is now Completed, so it no longer contributes to pending funds).
         var pendingBalance = await context.Bookings
             .AsNoTracking()
             .Where(b => b.MerchantId == wallet.MerchantId &&
                         (b.Status == BookingStatus.Pending || b.Status == BookingStatus.Confirmed))
             .SumAsync(b => b.TotalPrice);
 
-        return new WalletDto(
-            wallet.MerchantId,
-            wallet.AvailableBalance,
-            pendingBalance
-        );
+        return new WalletDto(wallet.MerchantId, wallet.AvailableBalance, pendingBalance);
     }
 }

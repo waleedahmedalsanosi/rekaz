@@ -23,7 +23,6 @@ public class ZienaDbContext(DbContextOptions<ZienaDbContext> options) : DbContex
                   .IsRequired()
                   .HasMaxLength(20);
 
-            // Unique index on PhoneNumber (used for OTP login lookup)
             entity.HasIndex(u => u.PhoneNumber)
                   .IsUnique()
                   .HasDatabaseName("IX_Users_PhoneNumber");
@@ -59,6 +58,15 @@ public class ZienaDbContext(DbContextOptions<ZienaDbContext> options) : DbContex
                   .HasPrecision(5, 4)
                   .HasDefaultValue(0.02m);
 
+            // ProviderRefId: optional Node.js provider ID bridge (e.g. "p1")
+            entity.Property(m => m.ProviderRefId)
+                  .HasMaxLength(100);
+
+            entity.HasIndex(m => m.ProviderRefId)
+                  .IsUnique()
+                  .HasFilter("\"ProviderRefId\" IS NOT NULL")
+                  .HasDatabaseName("IX_Merchants_ProviderRefId");
+
             // One-to-One: each Merchant belongs to exactly one User
             entity.HasOne<User>()
                   .WithOne()
@@ -75,28 +83,27 @@ public class ZienaDbContext(DbContextOptions<ZienaDbContext> options) : DbContex
                   .HasConversion<string>()
                   .HasMaxLength(20);
 
-            // TotalPrice: use the property setter so the EscrowAmount
-            // backing-field calculation runs on materialisation as well.
+            // ClientId: Node.js user ID string — no FK to .NET Users table
+            entity.Property(b => b.ClientId)
+                  .IsRequired()
+                  .HasMaxLength(100);
+
+            // ServiceId: Node.js service ID string — no Services table in .NET
+            entity.Property(b => b.ServiceId)
+                  .IsRequired()
+                  .HasMaxLength(100);
+
             entity.Property(b => b.TotalPrice)
                   .HasField("_totalPrice")
                   .UsePropertyAccessMode(PropertyAccessMode.Property)
                   .HasPrecision(18, 4);
 
-            // EscrowAmount: private setter – EF Core sets it via reflection.
-            // Stored so historic records remain accurate if commission changes.
             entity.Property(b => b.EscrowAmount)
                   .HasPrecision(18, 4);
 
-            // CommissionRate: snapshot of the merchant's rate at booking time.
             entity.Property(b => b.CommissionRate)
                   .HasPrecision(5, 4)
                   .HasDefaultValue(0.02m);
-
-            // FK: ClientId → Users (Many bookings per client)
-            entity.HasOne<User>()
-                  .WithMany()
-                  .HasForeignKey(b => b.ClientId)
-                  .OnDelete(DeleteBehavior.Restrict);
 
             // FK: MerchantId → Merchants (Many bookings per merchant)
             entity.HasOne<Merchant>()
@@ -118,17 +125,13 @@ public class ZienaDbContext(DbContextOptions<ZienaDbContext> options) : DbContex
                   .HasPrecision(18, 4)
                   .HasDefaultValue(0m);
 
-            // AvailableBalance is always TotalEarnings - CommissionDeducted;
-            // derived in memory — never stored as a separate column.
             entity.Ignore(w => w.AvailableBalance);
 
-            // One-to-One: each Wallet belongs to exactly one Merchant
             entity.HasOne<Merchant>()
                   .WithOne()
                   .HasForeignKey<Wallet>(w => w.MerchantId)
                   .OnDelete(DeleteBehavior.Cascade);
 
-            // Unique constraint enforces one wallet per merchant
             entity.HasIndex(w => w.MerchantId)
                   .IsUnique()
                   .HasDatabaseName("IX_Wallets_MerchantId");

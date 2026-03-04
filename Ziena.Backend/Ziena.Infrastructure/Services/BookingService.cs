@@ -10,34 +10,34 @@ public class BookingService(ZienaDbContext context) : IBookingService
 {
     public async Task<BookingResponseDto> CreateBookingAsync(BookingCreateDto dto)
     {
-        var merchant = await context.Merchants.FindAsync(dto.MerchantId)
-            ?? throw new KeyNotFoundException($"Merchant {dto.MerchantId} not found.");
-
-        var client = await context.Users.FindAsync(dto.ClientId)
-            ?? throw new KeyNotFoundException($"Client {dto.ClientId} not found.");
+        // Look up merchant by ProviderRefId (Node.js provider ID bridge)
+        var merchant = await context.Merchants
+            .FirstOrDefaultAsync(m => m.ProviderRefId == dto.MerchantId)
+            ?? throw new KeyNotFoundException(
+                $"Merchant with ProviderRefId '{dto.MerchantId}' not found. " +
+                "Ensure the .NET DB is seeded with matching ProviderRefId values.");
 
         // Guarantee the merchant has a wallet before we create a booking.
-        // This handles real merchants who were not seeded by DbInitializer.
-        var walletExists = await context.Wallets.AnyAsync(w => w.MerchantId == dto.MerchantId);
+        var walletExists = await context.Wallets.AnyAsync(w => w.MerchantId == merchant.Id);
         if (!walletExists)
-            context.Wallets.Add(new Wallet { MerchantId = dto.MerchantId });
+            context.Wallets.Add(new Wallet { MerchantId = merchant.Id });
 
         // CommissionRate MUST be initialised before TotalPrice so the setter
-        // uses the merchant-specific rate (read from DB) when calculating EscrowAmount.
+        // uses the merchant-specific rate when calculating EscrowAmount.
         var booking = new Booking
         {
             ClientId       = dto.ClientId,
-            MerchantId     = dto.MerchantId,
+            MerchantId     = merchant.Id,
             ServiceId      = dto.ServiceId,
             ScheduledAt    = dto.ScheduledAt,
-            CommissionRate = merchant.CommissionRate,  // ← from DB, not hardcoded
-            TotalPrice     = dto.TotalPrice            // ← setter fires, EscrowAmount auto-set
+            CommissionRate = merchant.CommissionRate,
+            TotalPrice     = dto.TotalPrice
         };
 
         context.Bookings.Add(booking);
-        await context.SaveChangesAsync(); // wallet + booking persisted atomically
+        await context.SaveChangesAsync();
 
-        return MapToDto(booking, client.FullName, merchant.BusinessName);
+        return MapToDto(booking, dto.ClientName, merchant.BusinessName);
     }
 
     public async Task<IReadOnlyList<BookingResponseDto>> GetMerchantBookingsAsync(Guid merchantId)
@@ -49,20 +49,13 @@ public class BookingService(ZienaDbContext context) : IBookingService
             .FirstOrDefaultAsync()
             ?? throw new KeyNotFoundException($"Merchant {merchantId} not found.");
 
-        // Join bookings with the Users table to retrieve each client's FullName.
-        // Materialise first so Status.ToString() runs in memory, not in SQL.
         var rows = await context.Bookings
             .AsNoTracking()
             .Where(b => b.MerchantId == merchantId)
-            .Join(
-                context.Users,
-                booking => booking.ClientId,
-                user    => user.Id,
-                (booking, user) => new { Booking = booking, ClientName = user.FullName })
             .ToListAsync();
 
         return rows
-            .Select(r => MapToDto(r.Booking, r.ClientName, merchantName))
+            .Select(r => MapToDto(r, r.ClientId, merchantName))
             .ToList();
     }
 
@@ -73,9 +66,9 @@ public class BookingService(ZienaDbContext context) : IBookingService
             booking.Id,
             clientName,
             merchantName,
-            booking.Status.ToString(),   // enum → string (e.g. "Pending", "Confirmed")
+            booking.Status.ToString(),
             booking.TotalPrice,
             booking.EscrowAmount,
-            booking.ScheduledAt
+            booking.ScheduledAt.ToString("o")
         );
 }

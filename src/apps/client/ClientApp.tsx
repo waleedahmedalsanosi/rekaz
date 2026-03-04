@@ -144,6 +144,7 @@ export default function ClientApp() {
         // .NET booking — escrow is captured at creation; no separate pay step needed.
         const booking = await api.bookings.create({
           clientId:    user!.id,
+          clientName:  user!.name,
           merchantId:  selectedItem.providerId,
           serviceId:   selectedItem.id,
           scheduledAt: `${data.date as string}T${data.time as string}:00.000Z`,
