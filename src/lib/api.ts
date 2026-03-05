@@ -28,14 +28,22 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
     throw new Error('تعذّر الاتصال بالخادم. شغّل: npm start');
   }
 
+  if (res.status === 204) return undefined as T;
+
+  const text = await res.text();
+
+  if (text.trimStart().startsWith('<')) {
+    console.error('[api] Got HTML instead of JSON from', path, '— proxy misconfiguration');
+    throw new Error('خطأ في الاتصال بالخادم — يُرجى المحاولة لاحقاً');
+  }
+
   if (!res.ok) {
     let msg = 'حدث خطأ';
-    try { msg = (await res.json()).error || msg; } catch { /* ignore */ }
+    try { msg = JSON.parse(text).error || msg; } catch { /* ignore */ }
     throw new Error(msg);
   }
 
-  if (res.status === 204) return undefined as T;
-  return res.json();
+  return JSON.parse(text) as T;
 }
 
 // ─── Auth ──────────────────────────────────────────────────────────────────

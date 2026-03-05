@@ -129,6 +129,42 @@ export default function ProviderApp() {
     }
   }, [messages, activeConversation]);
 
+  // Poll messages every 5 s when a conversation is open
+  useEffect(() => {
+    if (!activeConversation) return;
+    const id = setInterval(async () => {
+      try {
+        const msgs = await api.conversations.messages(activeConversation.id);
+        setMessages(msgs);
+      } catch { /* ignore */ }
+    }, 5000);
+    return () => clearInterval(id);
+  }, [activeConversation?.id]);
+
+  // Poll conversation list every 15 s for unread badges
+  useEffect(() => {
+    const id = setInterval(() => {
+      api.conversations.list().then(setConversations).catch(() => {});
+    }, 15000);
+    return () => clearInterval(id);
+  }, []);
+
+  // Poll bookings every 30 s so new client bookings appear without page reload
+  useEffect(() => {
+    const id = setInterval(() => {
+      api.bookings.list().then(bkgs => {
+        setBookings(bkgs);
+        const custMap = new Map<string, any>();
+        bkgs.forEach(b => {
+          if (b.customerId && b.customerName && !custMap.has(b.customerId))
+            custMap.set(b.customerId, { id: b.customerId, name: b.customerName, phone: '' });
+        });
+        setCustomers(Array.from(custMap.values()));
+      }).catch(() => {});
+    }, 30000);
+    return () => clearInterval(id);
+  }, []);
+
   const bottomNavItems = [
     { id: 'dashboard', label: 'الرئيسية', icon: Home },
     { id: 'bookings', label: 'الحجوزات', icon: Calendar },

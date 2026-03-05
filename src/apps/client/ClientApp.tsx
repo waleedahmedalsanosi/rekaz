@@ -116,6 +116,26 @@ export default function ClientApp() {
     }
   }, [messages, activeConversation]);
 
+  // Poll messages every 5 s when a conversation is open
+  useEffect(() => {
+    if (!activeConversation) return;
+    const id = setInterval(async () => {
+      try {
+        const msgs = await api.conversations.messages(activeConversation.id);
+        setMessages(msgs);
+      } catch { /* ignore */ }
+    }, 5000);
+    return () => clearInterval(id);
+  }, [activeConversation?.id]);
+
+  // Poll conversation list every 15 s to refresh unread badges
+  useEffect(() => {
+    const id = setInterval(() => {
+      api.conversations.list().then(setConversations).catch(() => {});
+    }, 15000);
+    return () => clearInterval(id);
+  }, []);
+
   const handleClose = () => {
     setShowModal(null);
     setSelectedItem(null);
