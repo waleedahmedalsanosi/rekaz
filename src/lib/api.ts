@@ -322,14 +322,23 @@ async function dotnetRequest<T>(method: string, path: string, body?: unknown): P
     throw new Error('تعذّر الاتصال بخادم زينة (.NET). تأكد من تشغيل dotnet run');
   }
 
+  if (res.status === 204) return undefined as T;
+
+  const text = await res.text();
+
+  // If the server returns HTML it means a proxy/routing misconfiguration.
+  if (text.trimStart().startsWith('<')) {
+    console.error('[dotnetApi] Got HTML instead of JSON from', path, '— check DOTNET_API_URL / VITE_DOTNET_API_URL');
+    throw new Error('خطأ في الاتصال بخادم زينة — يُرجى المحاولة لاحقاً');
+  }
+
   if (!res.ok) {
     let msg = 'حدث خطأ';
-    try { msg = (await res.json()).messageAr || msg; } catch { /* ignore */ }
+    try { msg = JSON.parse(text).messageAr || msg; } catch { /* ignore */ }
     throw new Error(msg);
   }
 
-  if (res.status === 204) return undefined as T;
-  return res.json();
+  return JSON.parse(text) as T;
 }
 
 // ─── Transition mappers ───────────────────────────────────────────────────

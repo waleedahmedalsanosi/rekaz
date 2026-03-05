@@ -53,12 +53,32 @@ app.use('/api/admin', adminRouter);
 // Health check
 app.get('/api/health', (_, res) => res.json({ status: 'ok', time: new Date().toISOString() }));
 
+// ─── .NET proxy ────────────────────────────────────────────────────────────
+// Forwards /dotnet-api/* → .NET backend (runtime env DOTNET_API_URL).
+// In dev Vite handles this; in production Express proxies directly.
+const DOTNET_ORIGIN = process.env.DOTNET_API_URL || 'http://localhost:5000';
+app.use('/dotnet-api', async (req, res) => {
+  const url = `${DOTNET_ORIGIN}${req.url}`;
+  try {
+    const upstream = await fetch(url, {
+      method: req.method,
+      headers: { 'Content-Type': 'application/json' },
+      body: ['GET', 'HEAD', 'DELETE'].includes(req.method) ? undefined : JSON.stringify(req.body),
+    });
+    const text = await upstream.text();
+    res.status(upstream.status).setHeader('Content-Type', 'application/json').end(text);
+  } catch (e: any) {
+    res.status(502).json({ error: 'خادم زينة .NET غير متاح', detail: e.message });
+  }
+});
+
 // ─── Serve frontend in production ─────────────────────────────────────────
 if (isProd) {
   const distPath = path.join(__dirname, '..', 'dist');
   app.use(express.static(distPath));
+  // Only serve index.html for SPA routes — never for API or proxy paths
   app.get('*', (req, res) => {
-    if (!req.path.startsWith('/api')) {
+    if (!req.path.startsWith('/api') && !req.path.startsWith('/dotnet-api')) {
       res.sendFile(path.join(distPath, 'index.html'));
     }
   });

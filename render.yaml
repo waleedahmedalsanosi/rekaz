@@ -13,8 +13,13 @@ services:
         sync: false
       - key: TURSO_TOKEN
         sync: false
-      # Set this to the deployed .NET service URL after first deploy, e.g.:
-      # https://ziena-dotnet.onrender.com
+      # DOTNET_API_URL (runtime) — used by the Express /dotnet-api proxy.
+      # Set to the deployed .NET service URL, e.g. https://ziena-dotnet.onrender.com
+      - key: DOTNET_API_URL
+        sync: false
+      # VITE_DOTNET_API_URL (build-time) — baked into the React bundle.
+      # When set the browser calls .NET directly (better performance).
+      # Same value as DOTNET_API_URL. If not set, the Express proxy above is used.
       - key: VITE_DOTNET_API_URL
         sync: false
 
