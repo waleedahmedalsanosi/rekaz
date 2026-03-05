@@ -8,7 +8,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { RIYADH_NEIGHBORHOODS } from '../../lib/mockData';
 import { BookingStatus, PaymentStatus } from '../../lib/types';
 import { useToast } from '../../components/Toast';
-import { api, dotnetApi, DotNetMerchantDto, ApiProvider, ApiService, ApiBooking, ApiConversation, ApiMessage, ApiReview } from '../../lib/api';
+import { api, dotnetApi, DotNetMerchantDto, DotNetMerchantAvailabilityDto, DotNetAvailabilityResponseDto, ApiProvider, ApiService, ApiBooking, ApiConversation, ApiMessage, ApiReview } from '../../lib/api';
 import { useAuth } from '../../contexts/AuthContext';
 
 const CATEGORIES = ['الكل', 'مكياج', 'شعر'];
@@ -39,6 +39,15 @@ export default function ClientApp() {
   const [searchQuery, setSearchQuery] = useState('');
   const [dataLoading, setDataLoading] = useState(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // ── Availability booking flow ────────────────────────────────────────────
+  // 'datetime' → user picks date+time → 'check' → 'select' (show merchants) → 'confirm'
+  const [bookingStep, setBookingStep] = useState<'datetime' | 'select' | 'confirm'>('datetime');
+  const [bookingDate, setBookingDate] = useState('');
+  const [bookingTime, setBookingTime] = useState('');
+  const [availabilityLoading, setAvailabilityLoading] = useState(false);
+  const [availabilityResult, setAvailabilityResult] = useState<DotNetAvailabilityResponseDto | null>(null);
+  const [selectedMerchant, setSelectedMerchant] = useState<DotNetMerchantAvailabilityDto | null>(null);
 
   useEffect(() => {
     loadData();
@@ -113,6 +122,30 @@ export default function ClientApp() {
     setReviewRating(5);
     setReviewComment('');
     setSelectedNeighborhood('');
+    setBookingStep('datetime');
+    setBookingDate('');
+    setBookingTime('');
+    setAvailabilityResult(null);
+    setSelectedMerchant(null);
+  };
+
+  const checkAvailability = async () => {
+    if (!bookingDate || !bookingTime) return;
+    setAvailabilityLoading(true);
+    try {
+      const result = await dotnetApi.bookings.getAvailableMerchants(
+        selectedItem?.id ?? '',
+        `${bookingDate}T${bookingTime}:00.000Z`,
+      );
+      setAvailabilityResult(result);
+      setBookingStep('select');
+    } catch {
+      // .NET offline — fall back to direct booking with the service's own provider
+      setAvailabilityResult({ isAvailable: true, availableMerchants: [], suggestedMerchant: null, suggestedTime: null });
+      setBookingStep('select');
+    } finally {
+      setAvailabilityLoading(false);
+    }
   };
 
   const handleStartChat = async (provider: ApiProvider) => {
@@ -166,16 +199,18 @@ export default function ClientApp() {
     const data = Object.fromEntries(formData.entries());
 
     try {
-      if (showModal === 'add_booking') {
+      if (showModal === 'add_booking' && bookingStep === 'confirm') {
         const neighborhood = selectedNeighborhood || (data.neighborhood as string);
         if (!neighborhood) { toast('يرجى اختيار الحي', 'error'); return; }
+        // Use the merchant selected from the availability list, falling back to the service's own provider
+        const providerId = selectedMerchant?.providerRefId ?? selectedItem.providerId;
         const booking = await api.bookings.create({
           clientId:    user!.id,
           clientName:  user!.name,
-          providerId:  selectedItem.providerId,
+          providerId,
           serviceId:   selectedItem.id,
-          date:        data.date as string,
-          time:        data.time as string,
+          date:        bookingDate,
+          time:        bookingTime,
           neighborhood,
           totalPrice:  selectedItem.price,
         });
@@ -200,6 +235,18 @@ export default function ClientApp() {
     }
 
     handleClose();
+  };
+
+  // ─── Helpers ─────────────────────────────────────────────────────────────
+  const formatSuggestedTime = (iso: string) => {
+    const d = new Date(iso);
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const tomorrow = new Date(today); tomorrow.setDate(today.getDate() + 1);
+    const dDay = new Date(d); dDay.setHours(0, 0, 0, 0);
+    const timeStr = d.toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' });
+    if (dDay.getTime() === today.getTime()) return `اليوم الساعة ${timeStr}`;
+    if (dDay.getTime() === tomorrow.getTime()) return `غداً الساعة ${timeStr}`;
+    return `${d.toLocaleDateString('ar-SA', { weekday: 'long' })} الساعة ${timeStr}`;
   };
 
   // ─── Render: Dashboard ───────────────────────────────────────────────────
@@ -773,17 +820,150 @@ export default function ClientApp() {
           >
             <div className="w-10 h-1 bg-gray-200 rounded-full mx-auto mb-6 sm:hidden" />
             <h3 className="text-xl font-black mb-6">
-              {showModal === 'add_booking' ? `حجز: ${selectedItem?.name}` :
-               showModal === 'process_payment' ? 'إتمام الدفع' :
-               showModal === 'confirm_service' ? 'تأكيد استلام الخدمة' :
-               'اكتبي تقييمك'}
+              {showModal === 'add_booking'
+                ? bookingStep === 'datetime' ? `اختاري الموعد`
+                  : bookingStep === 'select' ? 'اختاري المزوّدة'
+                  : `تأكيد الحجز: ${selectedItem?.name}`
+                : showModal === 'process_payment' ? 'إتمام الدفع'
+                : showModal === 'confirm_service' ? 'تأكيد استلام الخدمة'
+                : 'اكتبي تقييمك'}
             </h3>
             <form onSubmit={handleSubmit} className="space-y-4">
-              {showModal === 'add_booking' && (() => {
+
+              {/* ── STEP 1: DateTime picker ─────────────────────────────── */}
+              {showModal === 'add_booking' && bookingStep === 'datetime' && (
+                <>
+                  <div className="p-3 bg-orange-50 rounded-2xl border border-orange-100 text-center">
+                    <p className="text-sm font-bold">{selectedItem?.name}</p>
+                    <p className="text-orange-600 font-black">{selectedItem?.price} ﷼</p>
+                  </div>
+                  <div>
+                    <label className="text-xs font-bold text-gray-400 mb-1.5 block px-1">التاريخ</label>
+                    <input
+                      type="date" required value={bookingDate}
+                      onChange={e => setBookingDate(e.target.value)}
+                      min={new Date().toISOString().split('T')[0]}
+                      className="w-full bg-gray-50 border-none rounded-2xl px-4 py-4 font-bold focus:outline-none focus:ring-2 focus:ring-blue-400"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-bold text-gray-400 mb-1.5 block px-1">الوقت</label>
+                    <input
+                      type="time" required value={bookingTime}
+                      onChange={e => setBookingTime(e.target.value)}
+                      className="w-full bg-gray-50 border-none rounded-2xl px-4 py-4 font-bold focus:outline-none focus:ring-2 focus:ring-blue-400"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    disabled={!bookingDate || !bookingTime || availabilityLoading}
+                    onClick={checkAvailability}
+                    className="w-full bg-black text-white py-5 rounded-3xl font-black mt-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {availabilityLoading ? 'جارٍ التحقق...' : 'تحقق من التوفر'}
+                  </button>
+                </>
+              )}
+
+              {/* ── STEP 2: Merchant selection ──────────────────────────── */}
+              {showModal === 'add_booking' && bookingStep === 'select' && (() => {
+                const res = availabilityResult;
+                if (!res) return null;
+
+                // Available merchants
+                if (res.isAvailable && res.availableMerchants.length > 0) {
+                  return (
+                    <div className="space-y-3">
+                      <p className="text-sm text-gray-500 font-bold">
+                        المزوّدات المتاحة في {bookingDate} • {bookingTime}
+                      </p>
+                      {res.availableMerchants.map(m => (
+                        <button
+                          key={m.id}
+                          type="button"
+                          onClick={() => { setSelectedMerchant(m); setBookingStep('confirm'); }}
+                          className="w-full p-4 bg-white border-2 border-gray-100 rounded-3xl flex items-center gap-4 text-right hover:border-orange-400 transition-all active:scale-[0.98]"
+                        >
+                          <div className="w-10 h-10 bg-orange-100 rounded-xl flex items-center justify-center shrink-0">
+                            <Star size={18} className="text-orange-500" fill="currentColor" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-1.5">
+                              <p className="font-black text-sm">{m.businessName}</p>
+                              {m.isVerified && <ShieldCheck size={13} className="text-blue-500 shrink-0" />}
+                            </div>
+                            {m.bio && <p className="text-xs text-gray-400 truncate">{m.bio}</p>}
+                          </div>
+                          <ChevronRight size={16} className="text-gray-300 shrink-0" />
+                        </button>
+                      ))}
+                    </div>
+                  );
+                }
+
+                // No availability + suggestion
+                return (
+                  <div className="space-y-4">
+                    <div className="p-5 bg-red-50 rounded-3xl border border-red-100 text-center">
+                      <AlertCircle size={32} className="mx-auto text-red-400 mb-2" />
+                      <p className="font-black text-sm text-red-700">نعتذر، لا يوجد مقدمة خدمة متاحة في هذا الوقت</p>
+                    </div>
+                    {res.suggestedMerchant && res.suggestedTime && (
+                      <div className="p-5 bg-blue-50 rounded-3xl border border-blue-100 space-y-3">
+                        <p className="text-sm font-bold text-blue-800 text-right">
+                          نقترح عليكِ الحجز مع{' '}
+                          <span className="text-blue-600">{res.suggestedMerchant.businessName}</span>
+                          {' '}في وقت{' '}
+                          <span className="font-black">{formatSuggestedTime(res.suggestedTime)}</span>
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const d = new Date(res.suggestedTime!);
+                            setBookingDate(d.toISOString().split('T')[0]);
+                            setBookingTime(d.toTimeString().slice(0, 5));
+                            setSelectedMerchant(res.suggestedMerchant);
+                            setBookingStep('confirm');
+                          }}
+                          className="w-full py-3 bg-blue-600 text-white rounded-2xl font-black text-sm"
+                        >
+                          اختيار هذا الموعد
+                        </button>
+                      </div>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => setBookingStep('datetime')}
+                      className="w-full py-3 bg-gray-100 text-gray-600 rounded-2xl font-bold text-sm"
+                    >
+                      تغيير الموعد
+                    </button>
+                  </div>
+                );
+              })()}
+
+              {/* ── STEP 3: Confirm (neighborhood + price) ─────────────── */}
+              {showModal === 'add_booking' && bookingStep === 'confirm' && (() => {
                 const commission = Math.round((selectedItem?.price || 0) * COMMISSION_RATE);
                 const total = (selectedItem?.price || 0) + commission;
                 return (
                   <>
+                    {/* Selected merchant + time summary */}
+                    <div className="p-4 bg-blue-50 rounded-2xl border border-blue-100 flex items-center gap-3">
+                      <ShieldCheck size={20} className="text-blue-500 shrink-0" />
+                      <div>
+                        <p className="text-sm font-black">{selectedMerchant?.businessName ?? 'مزوّدة الخدمة'}</p>
+                        <p className="text-xs text-blue-600">{bookingDate} • {bookingTime}</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setBookingStep('select')}
+                        className="mr-auto text-xs text-gray-400 font-bold underline"
+                      >
+                        تغيير
+                      </button>
+                    </div>
+
                     {/* Price Breakdown */}
                     <div className="p-4 bg-orange-50 rounded-2xl border border-orange-100 space-y-2">
                       <div className="flex items-center justify-between">
@@ -800,16 +980,7 @@ export default function ClientApp() {
                       </div>
                     </div>
 
-                    <div>
-                      <label className="text-xs font-bold text-gray-400 mb-1.5 block px-1">التاريخ</label>
-                      <input name="date" type="date" required min={new Date().toISOString().split('T')[0]}
-                        className="w-full bg-gray-50 border-none rounded-2xl px-4 py-4 font-bold focus:outline-none focus:ring-2 focus:ring-blue-400" />
-                    </div>
-                    <div>
-                      <label className="text-xs font-bold text-gray-400 mb-1.5 block px-1">الوقت</label>
-                      <input name="time" type="time" required
-                        className="w-full bg-gray-50 border-none rounded-2xl px-4 py-4 font-bold focus:outline-none focus:ring-2 focus:ring-blue-400" />
-                    </div>
+                    {/* Neighborhood */}
                     <div>
                       <label className="text-xs font-bold text-gray-400 mb-1.5 block px-1">حيّك</label>
                       <div className="flex flex-wrap gap-2">
@@ -907,15 +1078,18 @@ export default function ClientApp() {
                 </div>
               )}
 
-              <button
-                type="submit"
-                className="w-full bg-black text-white py-5 rounded-3xl font-black mt-2"
-              >
-                {showModal === 'add_booking' ? 'تأكيد الحجز والدفع' :
-                 showModal === 'process_payment' ? 'ادفع الآن' :
-                 showModal === 'confirm_service' ? 'نعم، أكّدي الاستلام' :
-                 'إرسال التقييم'}
-              </button>
+              {/* Submit button — hidden during step 'datetime' and 'select' (those have their own buttons) */}
+              {!(showModal === 'add_booking' && (bookingStep === 'datetime' || bookingStep === 'select')) && (
+                <button
+                  type="submit"
+                  className="w-full bg-black text-white py-5 rounded-3xl font-black mt-2"
+                >
+                  {showModal === 'add_booking' ? 'تأكيد الحجز والدفع' :
+                   showModal === 'process_payment' ? 'ادفع الآن' :
+                   showModal === 'confirm_service' ? 'نعم، أكّدي الاستلام' :
+                   'إرسال التقييم'}
+                </button>
+              )}
             </form>
           </motion.div>
         </div>

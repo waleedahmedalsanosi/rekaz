@@ -7,5 +7,5 @@ public record BookingCreateDto(
     string   ServiceId,     // Node.js service ID (e.g. "s1")
     DateTime ScheduledAt,
     decimal  TotalPrice,
-    string?  ExternalId     // Node.js booking UUID — stored for cross-system lookup
+    string?  ExternalId = null // Node.js booking UUID — stored for cross-system lookup
 );

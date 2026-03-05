@@ -375,6 +375,9 @@ export const dotnetApi = {
   bookings: {
     merchantBookings: (merchantId: string) =>
       dotnetRequest<DotNetBookingResponseDto[]>('GET', `/bookings/merchant/${merchantId}`),
+    getAvailableMerchants: (serviceId: string, requestedTime: string) =>
+      dotnetRequest<DotNetAvailabilityResponseDto>('GET',
+        `/bookings/available-merchants?serviceId=${encodeURIComponent(serviceId)}&requestedTime=${encodeURIComponent(requestedTime)}`),
   },
   wallet: {
     get: (merchantId: string) =>
@@ -426,6 +429,22 @@ export interface DotNetWalletDto {
   merchantId: string;
   availableBalance: number;     // totalEarnings - commissionDeducted
   pendingBalance: number;       // sum of totalPrice for Confirmed bookings
+}
+
+/** GET /api/bookings/available-merchants */
+export interface DotNetMerchantAvailabilityDto {
+  id: string;
+  businessName: string;
+  bio: string | null;
+  isVerified: boolean;
+  providerRefId: string | null;
+}
+
+export interface DotNetAvailabilityResponseDto {
+  isAvailable: boolean;
+  availableMerchants: DotNetMerchantAvailabilityDto[];
+  suggestedMerchant: DotNetMerchantAvailabilityDto | null;
+  suggestedTime: string | null;  // ISO 8601 — null if no suggestion found
 }
 
 /** GET /api/admin/stats */

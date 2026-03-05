@@ -28,6 +28,15 @@ public class BookingsController(IBookingService bookingService) : ControllerBase
                 messageAr = "لم يتم العثور على التاجر أو العميل المطلوب"
             });
         }
+        catch (InvalidOperationException ex)
+        {
+            // Race-condition: slot was taken between availability check and booking creation
+            return Conflict(new
+            {
+                message   = ex.Message,
+                messageAr = ex.Message   // already in Arabic from BookingService
+            });
+        }
         catch (Exception ex)
         {
             return BadRequest(new
@@ -37,6 +46,17 @@ public class BookingsController(IBookingService bookingService) : ControllerBase
                 detail    = ex.Message
             });
         }
+    }
+
+    // GET api/bookings/available-merchants?serviceId=s1&requestedTime=2024-01-15T14:00:00Z
+    [HttpGet("available-merchants")]
+    [ProducesResponseType(typeof(AvailabilityResponseDto), StatusCodes.Status200OK)]
+    public async Task<IActionResult> GetAvailableMerchants(
+        [FromQuery] string serviceId,
+        [FromQuery] DateTime requestedTime)
+    {
+        var result = await bookingService.GetAvailableMerchantsAsync(serviceId, requestedTime);
+        return Ok(result);
     }
 
     // GET api/bookings/merchant/{merchantId}
