@@ -3,6 +3,7 @@ using System.Text.Json;
 using Lib.Net.Http.WebPush;
 using Lib.Net.Http.WebPush.Authentication;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Ziena.Application.DTOs;
 using Ziena.Application.Interfaces;
@@ -15,11 +16,12 @@ namespace Ziena.Infrastructure.Services;
 /// Singleton service — holds one PushServiceClient for the process lifetime.
 /// DB access uses IServiceScopeFactory to avoid captive-dependency issues.
 /// </summary>
-public sealed class NotificationService(IServiceScopeFactory scopeFactory)
+public sealed class NotificationService(IServiceScopeFactory scopeFactory, IConfiguration configuration)
     : INotificationService, IDisposable
 {
     private PushServiceClient?      _client;
     private readonly SemaphoreSlim  _lock = new(1, 1);
+    private string VapidSubject => configuration["Vapid:Subject"] ?? "mailto:admin@ziena.app";
 
     // ── Public interface ────────────────────────────────────────────────────
 
@@ -130,7 +132,7 @@ public sealed class NotificationService(IServiceScopeFactory scopeFactory)
             var client = new PushServiceClient();
             client.DefaultAuthentication = new VapidAuthentication(key.PublicKey, key.PrivateKey)
             {
-                Subject = "mailto:admin@ziena.app",
+                Subject = VapidSubject,
             };
 
             _client = client;

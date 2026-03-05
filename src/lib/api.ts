@@ -75,11 +75,31 @@ export const api = {
   // ─── Bookings ───────────────────────────────────────────────────────────
   bookings: {
     list: () => request<ApiBooking[]>('GET', '/bookings'),
-    // Routes to .NET POST /api/bookings — escrow is captured at creation time.
-    // Response is mapped back to ApiBooking so existing UI state is unaffected.
-    create: (data: DotNetBookingCreateDto) =>
-      dotnetRequest<DotNetBookingResponseDto>('POST', '/bookings', data)
-        .then(mapDotNetBookingToApi),
+    // Dual-write: create in Node.js (source of truth for UI) then register in
+    // .NET (source of truth for escrow/wallet). ExternalId links the two records.
+    create: async (data: {
+      serviceId: string; providerId: string; date: string; time: string;
+      neighborhood?: string; clientId: string; clientName: string; totalPrice: number;
+    }): Promise<ApiBooking> => {
+      // 1. Create in Node.js — returns the booking with a Node.js UUID
+      const nodeBooking = await request<ApiBooking>('POST', '/bookings', {
+        serviceId: data.serviceId, providerId: data.providerId,
+        date: data.date, time: data.time, neighborhood: data.neighborhood,
+      });
+      // 2. Register in .NET for escrow tracking (fire-and-forget on failure)
+      try {
+        await dotnetRequest<DotNetBookingResponseDto>('POST', '/bookings', {
+          clientId:   data.clientId,
+          clientName: data.clientName,
+          merchantId: data.providerId,
+          serviceId:  data.serviceId,
+          scheduledAt: `${data.date}T${data.time}:00.000Z`,
+          totalPrice:  data.totalPrice,
+          externalId:  nodeBooking.id,          // link Node.js UUID → .NET record
+        } satisfies DotNetBookingCreateDto);
+      } catch { /* .NET unavailable — Node.js booking still succeeds */ }
+      return nodeBooking;
+    },
     updateStatus: (id: string, status: string) =>
       request<ApiBooking>('PATCH', `/bookings/${id}/status`, { status }),
     pay: (id: string) =>
@@ -353,8 +373,6 @@ export const dotnetApi = {
       dotnetRequest<DotNetMerchantDto[]>('GET', '/merchants'),
   },
   bookings: {
-    create: (dto: DotNetBookingCreateDto) =>
-      dotnetRequest<DotNetBookingResponseDto>('POST', '/bookings', dto),
     merchantBookings: (merchantId: string) =>
       dotnetRequest<DotNetBookingResponseDto[]>('GET', `/bookings/merchant/${merchantId}`),
   },
@@ -388,6 +406,7 @@ export interface DotNetBookingCreateDto {
   serviceId: string;
   scheduledAt: string;          // ISO 8601 datetime
   totalPrice: number;
+  externalId?: string;          // Node.js booking UUID — stored for cross-system lookup
 }
 
 /** POST /api/bookings — response body */
@@ -399,6 +418,7 @@ export interface DotNetBookingResponseDto {
   totalPrice: number;
   escrowAmount: number;         // Math.Ceiling(totalPrice * commissionRate)
   scheduledAt: string;          // ISO 8601 datetime
+  externalId: string | null;    // Node.js booking UUID (echoed back)
 }
 
 /** GET /api/wallet/{merchantId} · POST /api/wallet/complete-booking/{bookingId} */

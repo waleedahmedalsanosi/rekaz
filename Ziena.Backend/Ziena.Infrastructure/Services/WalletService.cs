@@ -35,10 +35,18 @@ public class WalletService(ZienaDbContext context, INotificationService notifica
         return await GetWalletAsync(merchant.Id);
     }
 
-    public async Task<WalletDto> ProcessCompletionAsync(Guid bookingId)
+    public async Task<WalletDto> ProcessCompletionAsync(string bookingRef)
     {
-        var booking = await context.Bookings.FindAsync(bookingId)
-            ?? throw new KeyNotFoundException($"Booking {bookingId} not found.");
+        // Accept either the .NET GUID or the Node.js ExternalId string
+        Booking? booking = null;
+        if (Guid.TryParse(bookingRef, out var guid))
+            booking = await context.Bookings.FindAsync(guid);
+
+        booking ??= await context.Bookings
+            .FirstOrDefaultAsync(b => b.ExternalId == bookingRef);
+
+        if (booking is null)
+            throw new KeyNotFoundException($"Booking '{bookingRef}' not found.");
 
         if (booking.Status != BookingStatus.Pending && booking.Status != BookingStatus.Confirmed)
             throw new InvalidOperationException(

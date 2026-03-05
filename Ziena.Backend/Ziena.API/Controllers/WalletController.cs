@@ -34,15 +34,15 @@ public class WalletController(IWalletService walletService) : ControllerBase
         }
     }
 
-    // POST api/wallet/complete-booking/{bookingId}
-    [HttpPost("complete-booking/{bookingId:guid}")]
+    // POST api/wallet/complete-booking/{bookingRef}  — accepts .NET GUID or Node.js ExternalId
+    [HttpPost("complete-booking/{bookingRef}")]
     [ProducesResponseType(typeof(WalletDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
-    public async Task<IActionResult> CompleteBooking(Guid bookingId)
+    public async Task<IActionResult> CompleteBooking(string bookingRef)
     {
         try
         {
-            var wallet = await walletService.ProcessCompletionAsync(bookingId);
+            var wallet = await walletService.ProcessCompletionAsync(bookingRef);
             return Ok(wallet);
         }
         catch (KeyNotFoundException ex)

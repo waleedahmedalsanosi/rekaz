@@ -25,7 +25,8 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseCors();
-app.UseHttpsRedirection();
+if (!app.Environment.IsDevelopment())
+    app.UseHttpsRedirection();
 app.MapControllers();
 
 // Ensure DB exists and seed reference data in development

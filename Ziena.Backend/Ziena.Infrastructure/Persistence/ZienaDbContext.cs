@@ -95,6 +95,15 @@ public class ZienaDbContext(DbContextOptions<ZienaDbContext> options) : DbContex
                   .IsRequired()
                   .HasMaxLength(100);
 
+            // ExternalId: Node.js booking UUID — cross-system lookup key
+            entity.Property(b => b.ExternalId)
+                  .HasMaxLength(100);
+
+            entity.HasIndex(b => b.ExternalId)
+                  .IsUnique()
+                  .HasFilter("\"ExternalId\" IS NOT NULL")
+                  .HasDatabaseName("IX_Bookings_ExternalId");
+
             entity.Property(b => b.TotalPrice)
                   .HasField("_totalPrice")
                   .UsePropertyAccessMode(PropertyAccessMode.Property)

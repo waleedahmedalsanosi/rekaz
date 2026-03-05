@@ -7,5 +7,6 @@ public record BookingResponseDto(
     string   Status,
     decimal  TotalPrice,
     decimal  EscrowAmount,
-    DateTime ScheduledAt
+    DateTime ScheduledAt,
+    string?  ExternalId    // Node.js booking UUID — echoed back so frontend can correlate
 );

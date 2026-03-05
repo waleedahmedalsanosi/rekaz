@@ -22,6 +22,10 @@ public static class DbInitializer
         context.Database.ExecuteSqlRaw(@"CREATE TABLE IF NOT EXISTS ""UserPushSubscriptions"" (""Id"" TEXT NOT NULL CONSTRAINT ""PK_UserPushSubscriptions"" PRIMARY KEY, ""UserRef"" TEXT NOT NULL DEFAULT '', ""Endpoint"" TEXT NOT NULL DEFAULT '', ""P256DH"" TEXT NOT NULL DEFAULT '', ""Auth"" TEXT NOT NULL DEFAULT '', ""CreatedAt"" TEXT NOT NULL DEFAULT '')");
         context.Database.ExecuteSqlRaw(@"CREATE INDEX IF NOT EXISTS ""IX_UserPushSubscriptions_UserRef"" ON ""UserPushSubscriptions"" (""UserRef"")");
 
+        // Add ExternalId column to Bookings for cross-system Node.js UUID lookup
+        try { context.Database.ExecuteSqlRaw(@"ALTER TABLE ""Bookings"" ADD COLUMN ""ExternalId"" TEXT"); } catch { /* column already exists */ }
+        context.Database.ExecuteSqlRaw(@"CREATE UNIQUE INDEX IF NOT EXISTS ""IX_Bookings_ExternalId"" ON ""Bookings"" (""ExternalId"") WHERE ""ExternalId"" IS NOT NULL");
+
         // Generate VAPID keys once on first startup
         if (!context.VapidKeys.Any())
         {

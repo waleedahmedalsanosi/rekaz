@@ -7,6 +7,8 @@ public class Booking : BaseEntity
     public required Guid MerchantId { get; set; }
     /// <summary>Node.js service ID (e.g. "s1") — no Services table in .NET.</summary>
     public required string ServiceId { get; set; }
+    /// <summary>Node.js booking UUID — cross-system reference for completing bookings.</summary>
+    public string? ExternalId { get; set; }
     public BookingStatus Status { get; set; } = BookingStatus.Pending;
     public required DateTime ScheduledAt { get; set; }
 

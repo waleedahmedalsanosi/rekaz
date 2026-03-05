@@ -6,5 +6,6 @@ public record BookingCreateDto(
     string   MerchantId,    // Node.js provider ID (e.g. "p1") — resolved to Merchant.ProviderRefId
     string   ServiceId,     // Node.js service ID (e.g. "s1")
     DateTime ScheduledAt,
-    decimal  TotalPrice
+    decimal  TotalPrice,
+    string?  ExternalId     // Node.js booking UUID — stored for cross-system lookup
 );

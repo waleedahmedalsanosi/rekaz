@@ -31,7 +31,8 @@ public class BookingService(ZienaDbContext context, INotificationService notific
             ServiceId      = dto.ServiceId,
             ScheduledAt    = dto.ScheduledAt,
             CommissionRate = merchant.CommissionRate,
-            TotalPrice     = dto.TotalPrice
+            TotalPrice     = dto.TotalPrice,
+            ExternalId     = dto.ExternalId
         };
 
         context.Bookings.Add(booking);
@@ -78,6 +79,7 @@ public class BookingService(ZienaDbContext context, INotificationService notific
             booking.Status.ToString(),
             booking.TotalPrice,
             booking.EscrowAmount,
-            booking.ScheduledAt
+            booking.ScheduledAt,
+            booking.ExternalId
         );
 }
