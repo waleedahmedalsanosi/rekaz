@@ -9,7 +9,7 @@ import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { motion, AnimatePresence } from 'motion/react';
 
 function AppInner() {
-  const { user, isLoading, login, logout, switchRole } = useAuth();
+  const { user, isLoading, login, switchRole } = useAuth();
 
   if (isLoading) {
     return (
@@ -40,14 +40,6 @@ function AppInner() {
             exit={{ opacity: 0 }}
             transition={{ duration: 0.25 }}
           >
-            {/* Account switcher (logout) */}
-            <button
-              onClick={logout}
-              className="fixed top-4 left-4 z-[100] bg-black/10 backdrop-blur-md text-black px-3 py-1.5 rounded-full text-[10px] font-bold hover:bg-black/20 transition-colors"
-            >
-              تغيير الحساب
-            </button>
-
             {/* Dev role switcher — only in development */}
             {import.meta.env.DEV && (
               <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-200 flex gap-1 bg-black/85 backdrop-blur-md rounded-full px-2 py-1.5 shadow-xl">

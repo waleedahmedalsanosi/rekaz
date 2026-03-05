@@ -140,9 +140,10 @@ export default function ClientApp() {
       setAvailabilityResult(result);
       setBookingStep('select');
     } catch {
-      // .NET offline — fall back to direct booking with the service's own provider
+      // .NET offline — skip merchant selection and book directly with the service's own provider
       setAvailabilityResult({ isAvailable: true, availableMerchants: [], suggestedMerchant: null, suggestedTime: null });
-      setBookingStep('select');
+      setSelectedMerchant(null); // will fall back to selectedItem.providerId in handleSubmit
+      setBookingStep('confirm');
     } finally {
       setAvailabilityLoading(false);
     }
@@ -571,10 +572,10 @@ export default function ClientApp() {
         </div>
         <div className="p-4 space-y-1">
           {[
-            { label: 'إعدادات الحساب', icon: Settings },
-            { label: 'الدعم الفني', icon: MessageSquare },
+            { label: 'إعدادات الحساب', icon: Settings, action: () => toast('إعدادات الحساب قريباً ✨', 'info') },
+            { label: 'الدعم الفني', icon: MessageSquare, action: () => toast('للتواصل مع الدعم: support@ziena.sa', 'info') },
           ].map((item, i) => (
-            <button key={i} className="w-full p-4 flex items-center gap-4 hover:bg-gray-50 rounded-2xl transition-colors">
+            <button key={i} onClick={item.action} className="w-full p-4 flex items-center gap-4 hover:bg-gray-50 rounded-2xl transition-colors">
               <div className="p-2 bg-gray-50 rounded-xl text-gray-500"><item.icon size={18} /></div>
               <span className="text-sm font-bold flex-1 text-right">{item.label}</span>
               <ChevronRight size={16} className="text-gray-300" />

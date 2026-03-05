@@ -66,7 +66,12 @@ export default function ProviderApp() {
     { code: 'WELCOME20', discount: '20%', usage: '15/50' },
     { code: 'RAMADAN', discount: '50 ﷼', usage: '120/200' },
   ]);
-  const [workingHours, setWorkingHours] = useState(INIT_HOURS);
+  const [workingHours, setWorkingHours] = useState(() => {
+    try {
+      const saved = localStorage.getItem('zeina_working_hours');
+      return saved ? JSON.parse(saved) : INIT_HOURS;
+    } catch { return INIT_HOURS; }
+  });
   const [wallet, setWallet] = useState<DotNetWalletDto>({ merchantId: '', availableBalance: 0, pendingBalance: 0 });
   const [transactions, setTransactions] = useState<ApiTransaction[]>([]);
   const [conversations, setConversations] = useState<ApiConversation[]>([]);
@@ -222,6 +227,13 @@ export default function ProviderApp() {
         ));
         const credited = (selectedItem.totalPrice ?? 0).toLocaleString();
         toast(`تم تأكيد الخدمة! تمت إضافة ${credited} ﷼ لمحفظتك ✓`);
+      } else if (showModal === 'add_customer') {
+        const name = (data.name as string)?.trim();
+        const phone = (data.phone as string)?.trim();
+        if (!name || !phone) { toast('يرجى إدخال الاسم ورقم الجوال', 'error'); return; }
+        const newCustomer = { id: `manual-${Date.now()}`, name, phone };
+        setCustomers(prev => [...prev, newCustomer]);
+        toast('تمت إضافة العميلة ✓');
       } else if (showModal === 'request_payout') {
         if (!ibanInput || !payoutAmount) return;
         await api.wallet.requestPayout(Number(payoutAmount), ibanInput);
@@ -269,7 +281,7 @@ export default function ProviderApp() {
       };
       await dotnetApi.notifications.subscribe(dto);
       setNotifStatus("enabled");
-      toast("تم تفعيل التنبيهات! D83DDD14");
+      toast("تم تفعيل التنبيهات الفورية 🔔");
     } catch (e: any) {
       setNotifStatus("idle");
       toast(e.message || "حدث خطأ أثناء تفعيل التنبيهات", "error");
@@ -281,7 +293,7 @@ export default function ProviderApp() {
     <div className="space-y-6 pb-24">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-black tracking-tight">أهلاً ليلى 👋</h2>
+          <h2 className="text-2xl font-black tracking-tight">أهلاً {user?.name || 'بك'} 👋</h2>
           <p className="text-sm text-gray-500">إليك ملخص أعمالك اليوم</p>
         </div>
         <div className="w-12 h-12 rounded-2xl bg-orange-100 border-2 border-white shadow-sm overflow-hidden">
@@ -814,7 +826,7 @@ export default function ProviderApp() {
       <div className="bg-white rounded-4xl border border-gray-100 p-6 shadow-sm">
         <div className="flex items-center justify-between mb-4">
           <h3 className="font-bold">كوبونات الخصم</h3>
-          <button className="text-xs font-bold text-orange-600 flex items-center gap-1"><Plus size={14} /> إضافة</button>
+          <button onClick={() => toast('إدارة الكوبونات قريباً ✨', 'info')} className="text-xs font-bold text-orange-600 flex items-center gap-1"><Plus size={14} /> إضافة</button>
         </div>
         <div className="space-y-3">
           {coupons.map((c, i) => (
@@ -865,7 +877,11 @@ export default function ProviderApp() {
         ))}
       </div>
       <button
-        onClick={() => { toast('تم حفظ أوقات العمل ✓'); setSubView(null); }}
+        onClick={() => {
+          localStorage.setItem('zeina_working_hours', JSON.stringify(workingHours));
+          toast('تم حفظ أوقات العمل ✓');
+          setSubView(null);
+        }}
         className="w-full bg-black text-white py-5 rounded-3xl font-black flex items-center justify-center gap-2"
       >
         <Save size={18} /> حفظ التغييرات
@@ -882,12 +898,16 @@ export default function ProviderApp() {
       </div>
 
       <div className="flex justify-center">
-        <div className="relative w-24 h-24 rounded-3xl overflow-hidden border-4 border-orange-100 shadow-sm">
+        <button
+          type="button"
+          onClick={() => toast('رفع الصور قريباً ✨', 'info')}
+          className="relative w-24 h-24 rounded-3xl overflow-hidden border-4 border-orange-100 shadow-sm"
+        >
           <img src="https://picsum.photos/seed/provider/100/100" className="w-full h-full object-cover" alt="" />
           <div className="absolute inset-0 bg-black/30 flex items-center justify-center">
             <Camera size={20} className="text-white" />
           </div>
-        </div>
+        </button>
       </div>
 
       <div className="space-y-4">
