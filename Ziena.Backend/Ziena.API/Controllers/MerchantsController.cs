@@ -48,6 +48,25 @@ public class MerchantsController(IMerchantService merchantService) : ControllerB
             return BadRequest(new { messageAr = "حدث خطأ أثناء حفظ أوقات العمل", detail = ex.Message });
         }
     }
+
+    // POST api/merchants/ensure — idempotent, called by Node.js on new provider registration
+    [HttpPost("ensure")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    public async Task<IActionResult> Ensure([FromBody] EnsureMerchantRequest request)
+    {
+        if (string.IsNullOrWhiteSpace(request.ProviderRefId))
+            return BadRequest(new { messageAr = "providerRefId مطلوب" });
+        try
+        {
+            await merchantService.EnsureMerchantAsync(request.ProviderRefId, request.BusinessName ?? request.ProviderRefId);
+            return Ok(new { success = true });
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(new { messageAr = "حدث خطأ أثناء إنشاء التاجر", detail = ex.Message });
+        }
+    }
 }
 
 public record UpdateWorkingHoursRequest(string WorkingHoursJson);
+public record EnsureMerchantRequest(string ProviderRefId, string? BusinessName);

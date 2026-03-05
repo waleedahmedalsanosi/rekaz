@@ -203,6 +203,8 @@ export default function ProviderApp() {
 
   const handleOpenConversation = async (conv: ApiConversation) => {
     setActiveConversation(conv);
+    // Immediately clear unread badge in local state (server marks as read via GET messages)
+    setConversations(prev => prev.map(c => c.id === conv.id ? { ...c, unreadCount: 0 } : c));
     try {
       const msgs = await api.conversations.messages(conv.id);
       setMessages(msgs);

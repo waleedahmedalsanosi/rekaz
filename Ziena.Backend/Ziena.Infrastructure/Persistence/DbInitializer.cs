@@ -29,13 +29,27 @@ public static class DbInitializer
         try { context.Database.ExecuteSqlRaw(@"ALTER TABLE ""Merchants"" ADD COLUMN ""WorkingHoursJson"" TEXT"); } catch { /* column already exists */ }
         context.Database.ExecuteSqlRaw(@"CREATE UNIQUE INDEX IF NOT EXISTS ""IX_Bookings_ExternalId"" ON ""Bookings"" (""ExternalId"") WHERE ""ExternalId"" IS NOT NULL");
 
-        // Generate VAPID keys once on first startup
+        // Generate VAPID keys once on first startup.
+        // If VAPID_PUBLIC_KEY + VAPID_PRIVATE_KEY env vars are set, use them (stable across re-deploys).
         if (!context.VapidKeys.Any())
         {
-            var (pub, priv) = NotificationService.GenerateVapidKeys();
+            var envPub  = Environment.GetEnvironmentVariable("VAPID_PUBLIC_KEY");
+            var envPriv = Environment.GetEnvironmentVariable("VAPID_PRIVATE_KEY");
+            string pub, priv;
+            if (!string.IsNullOrWhiteSpace(envPub) && !string.IsNullOrWhiteSpace(envPriv))
+            {
+                pub  = envPub;
+                priv = envPriv;
+                Console.WriteLine("[Ziena] Using VAPID keys from environment variables.");
+            }
+            else
+            {
+                (pub, priv) = NotificationService.GenerateVapidKeys();
+                Console.WriteLine($"[Ziena] Generated VAPID public key: {pub}");
+                Console.WriteLine("[Ziena] TIP: Set VAPID_PUBLIC_KEY + VAPID_PRIVATE_KEY env vars to persist keys across re-deploys.");
+            }
             context.VapidKeys.Add(new VapidKey { PublicKey = pub, PrivateKey = priv });
             context.SaveChanges();
-            Console.WriteLine($"[Ziena] Generated VAPID public key: {pub}");
         }
 
         if (context.Users.Any()) return; // Already seeded

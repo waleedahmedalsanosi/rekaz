@@ -37,3 +37,10 @@ services:
         sync: false
       - key: TURSO_TOKEN
         sync: false
+      # VAPID keys — set once, never change, so browser push subscriptions survive re-deploys.
+      # Generate with: node -e "const w=require('web-push');w.generateVAPIDKeys().then(k=>console.log(JSON.stringify(k)))"
+      # Or let the app generate them on first boot (check startup logs for the public key).
+      - key: VAPID_PUBLIC_KEY
+        sync: false
+      - key: VAPID_PRIVATE_KEY
+        sync: false

@@ -33,18 +33,37 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    try {
-      const savedUser = localStorage.getItem('zeina_user');
-      const savedToken = localStorage.getItem('token');
-      if (savedUser && savedToken) {
-        setToken(savedToken);
-        setUser(JSON.parse(savedUser));
-      }
-    } catch {
-      localStorage.removeItem('zeina_user');
-      localStorage.removeItem('token');
-    }
-    setIsLoading(false);
+    const savedToken = localStorage.getItem('token');
+    if (!savedToken) { setIsLoading(false); return; }
+
+    // Validate token with server — prevents stale sessions and fixes auth-on-refresh
+    setToken(savedToken);
+    fetch('/api/auth/me', { headers: { Authorization: `Bearer ${savedToken}` } })
+      .then(r => r.ok ? r.json() : null)
+      .then(serverUser => {
+        if (serverUser) {
+          const authUser: AuthUser = {
+            id: serverUser.id, name: serverUser.name, phone: serverUser.phone,
+            email: serverUser.email, role: serverUser.role as UserRole,
+            avatar: serverUser.avatar, providerId: serverUser.providerId,
+          };
+          setUser(authUser);
+          localStorage.setItem('zeina_user', JSON.stringify(authUser));
+        } else {
+          // Token invalid or expired — clear session
+          setToken(null);
+          localStorage.removeItem('zeina_user');
+          localStorage.removeItem('token');
+        }
+      })
+      .catch(() => {
+        // Network error — fall back to cached user so app still works offline
+        try {
+          const saved = localStorage.getItem('zeina_user');
+          if (saved) setUser(JSON.parse(saved));
+        } catch { /* ignore */ }
+      })
+      .finally(() => setIsLoading(false));
   }, []);
 
   const login = (apiUser: ApiUser, token: string) => {

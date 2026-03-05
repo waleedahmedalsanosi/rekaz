@@ -30,4 +30,28 @@ public class MerchantService(ZienaDbContext context) : IMerchantService
         merchant.WorkingHoursJson = workingHoursJson;
         await context.SaveChangesAsync();
     }
+
+    public async Task EnsureMerchantAsync(string providerRefId, string businessName)
+    {
+        var existing = await context.Merchants
+            .AnyAsync(m => m.ProviderRefId == providerRefId);
+        if (existing) return;
+
+        context.Merchants.Add(new Ziena.Domain.Entities.Merchant
+        {
+            ProviderRefId  = providerRefId,
+            BusinessName   = businessName,
+            CommissionRate = 0.02m,
+            IsVerified     = false,
+        });
+        var wallet = new Ziena.Domain.Entities.Wallet();
+        // wallet.MerchantId will be set by EF after SaveChanges via navigation
+        // Add wallet after merchant to get the generated Id
+        await context.SaveChangesAsync();
+
+        var merchant = await context.Merchants
+            .FirstAsync(m => m.ProviderRefId == providerRefId);
+        context.Wallets.Add(new Ziena.Domain.Entities.Wallet { MerchantId = merchant.Id });
+        await context.SaveChangesAsync();
+    }
 }

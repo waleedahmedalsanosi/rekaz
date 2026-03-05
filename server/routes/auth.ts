@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { randomUUID } from 'crypto';
 import db from '../db.js';
+import { requireAuth, AuthRequest } from '../middleware/auth.js';
 
 const router = Router();
 const SESSION_DAYS = 30;
@@ -61,6 +62,14 @@ router.post('/verify-otp', async (req, res) => {
           'INSERT INTO providers (id, user_id, specialty, city) VALUES (?,?,?,?)'
         ).run(providerId, userId, specialty || '', city || '');
         await db.prepare('INSERT INTO wallets (id, provider_id) VALUES (?,?)').run(randomUUID(), providerId);
+
+        // Register in .NET as a Merchant so bookings + escrow work for this provider
+        const dotnetOrigin = process.env.DOTNET_API_URL || 'http://localhost:5000';
+        fetch(`${dotnetOrigin}/api/merchants/ensure`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ providerRefId: providerId, businessName: userName }),
+        }).catch(() => { /* non-critical — .NET may be offline; merchant will sync later */ });
       }
 
       user = await db.prepare('SELECT * FROM users WHERE id = ?').get(userId);
@@ -100,6 +109,23 @@ router.post('/admin-login', async (req, res) => {
     res.json({
       token,
       user: { id: admin.id, name: admin.name, phone: admin.phone, email: admin.email, role: admin.role, avatar: admin.avatar },
+    });
+  } catch { res.status(500).json({ error: 'خطأ في الخادم' }); }
+});
+
+// GET /api/auth/me — validate token, return current user
+router.get('/me', requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const full = await getUserWithProvider(req.userId!);
+    if (!full) return res.status(401).json({ error: 'المستخدم غير موجود' });
+    res.json({
+      id: full.id,
+      name: full.name,
+      phone: full.phone,
+      email: full.email,
+      role: full.role,
+      avatar: full.avatar,
+      providerId: full.provider_id || undefined,
     });
   } catch { res.status(500).json({ error: 'خطأ في الخادم' }); }
 });
