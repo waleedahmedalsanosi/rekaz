@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import {
   Home, Calendar, ShoppingBag, Users, Settings, Plus, TrendingUp, Star,
   CheckCircle, Clock, LogOut, ChevronRight, ArrowLeft, Gift, PieChart,
-  MessageSquare, Camera, MapPin, Save, Wallet, Send, AlertCircle, ShieldCheck,
+  MessageSquare, Camera, MapPin, Save, Wallet, Send, AlertCircle, ShieldCheck, Bell,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
@@ -12,7 +12,7 @@ import {
 import { RIYADH_NEIGHBORHOODS } from '../../lib/mockData';
 import { BookingStatus, UserRole, PaymentStatus } from '../../lib/types';
 import { useToast } from '../../components/Toast';
-import { api, dotnetApi, ApiBooking, ApiService, ApiTransaction, ApiConversation, ApiMessage, DotNetWalletDto } from '../../lib/api';
+import { api, dotnetApi, ApiBooking, ApiService, ApiTransaction, ApiConversation, ApiMessage, DotNetWalletDto, DotNetPushSubscriptionDto } from '../../lib/api';
 import { useAuth } from '../../contexts/AuthContext';
 
 const salesData = [
@@ -44,6 +44,13 @@ const INIT_HOURS = [
   { day: 'السبت', enabled: false, start: '00:00', end: '00:00' },
 ];
 
+function urlBase64ToUint8Array(base64: string): Uint8Array {
+  const padding = "=".repeat((4 - (base64.length % 4)) % 4);
+  const b64 = (base64 + padding).replace(/-/g, "+").replace(/_/g, "/");
+  const raw = atob(b64);
+  return new Uint8Array([...raw].map((c) => c.charCodeAt(0)));
+}
+
 export default function ProviderApp() {
   const { toast } = useToast();
   const { user, logout } = useAuth();
@@ -70,6 +77,7 @@ export default function ProviderApp() {
   const [payoutAmount, setPayoutAmount] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [dataLoading, setDataLoading] = useState(true);
+  const [notifStatus, setNotifStatus] = useState<'idle' | 'loading' | 'enabled' | 'blocked'>('idle');
 
   const [storeInfo, setStoreInfo] = useState({
     name: user?.name || '',
@@ -229,6 +237,43 @@ export default function ProviderApp() {
     }
 
     handleClose();
+  };
+
+  // ─── Push Notifications ──────────────────────────────────────────────────
+  const enableNotifications = async () => {
+    if (!("Notification" in window) || !("serviceWorker" in navigator)) {
+      toast("متصفحك لا يدعم الإشعارات", "error");
+      return;
+    }
+    setNotifStatus("loading");
+    try {
+      const permission = await Notification.requestPermission();
+      if (permission !== "granted") {
+        setNotifStatus("blocked");
+        toast("تم رفض إذن الإشعارات", "error");
+        return;
+      }
+      const reg = await navigator.serviceWorker.ready;
+      const { publicKey } = await dotnetApi.notifications.getVapidPublicKey();
+      if (!publicKey) throw new Error("لم يتم العثور على مفتاح VAPID");
+      const pushSub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(publicKey),
+      });
+      const json = pushSub.toJSON();
+      const dto: DotNetPushSubscriptionDto = {
+        userRef:  user!.providerId!,
+        endpoint: json.endpoint!,
+        p256dh:   (json.keys as Record<string,string>).p256dh,
+        auth:     (json.keys as Record<string,string>).auth,
+      };
+      await dotnetApi.notifications.subscribe(dto);
+      setNotifStatus("enabled");
+      toast("تم تفعيل التنبيهات! D83DDD14");
+    } catch (e: any) {
+      setNotifStatus("idle");
+      toast(e.message || "حدث خطأ أثناء تفعيل التنبيهات", "error");
+    }
   };
 
   // ─── Render: Dashboard ───────────────────────────────────────────────────
@@ -507,7 +552,51 @@ export default function ProviderApp() {
     </div>
   );
 
-  // ─── Render: Settings ────────────────────────────────────────────────────
+  // ─── Render: Notifications ──────────────────────────────────────────────
+  const renderNotifications = () => (
+    <div className="space-y-6 pb-24">
+      <div className="flex items-center gap-4">
+        <button onClick={() => setSubView(null)} className="p-2 bg-white rounded-xl shadow-sm">
+          <ArrowLeft size={20} />
+        </button>
+        <h2 className="text-2xl font-black">التنبيهات</h2>
+      </div>
+
+      <div className="bg-white rounded-4xl border border-gray-100 shadow-sm p-6 text-center space-y-5">
+        <div className="w-16 h-16 bg-orange-50 rounded-2xl flex items-center justify-center mx-auto">
+          <Bell size={28} className="text-orange-500" />
+        </div>
+        <div>
+          <h3 className="font-black text-lg">تنبيهات فورية</h3>
+          <p className="text-sm text-gray-500 mt-1">
+            احصلي على إشعار فوري عند وصول حجز جديد أو اكتمال دفعة في محفظتك
+          </p>
+        </div>
+
+        {notifStatus === 'enabled' ? (
+          <div className="flex items-center justify-center gap-2 text-green-600 font-black text-sm">
+            <CheckCircle size={18} />
+            <span>التنبيهات مفعّلة</span>
+          </div>
+        ) : notifStatus === 'blocked' ? (
+          <div className="text-sm text-red-500 bg-red-50 rounded-2xl p-4">
+            يبدو أنكِ حظرتِ الإشعارات. غيّري الإعداد من المتصفح ثم أعيدي المحاولة.
+          </div>
+        ) : (
+          <button
+            onClick={enableNotifications}
+            disabled={notifStatus === 'loading'}
+            className="w-full py-3.5 bg-orange-500 text-white font-black rounded-2xl hover:bg-orange-600 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+          >
+            <Bell size={18} />
+            {notifStatus === 'loading' ? 'جارٍ التفعيل...' : '🔔 تفعيل التنبيهات'}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+
+    // ─── Render: Settings ────────────────────────────────────────────────────
   const renderSettings = () => (
     <div className="space-y-6 pb-24">
       <h2 className="text-2xl font-black">الإعدادات</h2>
@@ -536,6 +625,7 @@ export default function ProviderApp() {
             { id: 'messages', label: 'رسائل العملاء', icon: MessageSquare, badge: unreadMessages },
             { id: 'marketing', label: 'التسويق والكوبونات', icon: Gift },
             { id: 'reports', label: 'التقارير والإحصائيات', icon: PieChart },
+            { id: 'notifications', label: 'التنبيهات', icon: Bell },
           ].map((item) => (
             <button
               key={item.id}
@@ -936,6 +1026,7 @@ export default function ProviderApp() {
             {subView === 'reports' && renderReports()}
             {subView === 'wallet' && renderWallet()}
             {subView === 'messages' && renderMessages()}
+            {subView === 'notifications' && renderNotifications()}
             {!subView && (
               <>
                 {activeTab === 'dashboard' && renderDashboard()}

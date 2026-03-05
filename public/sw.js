@@ -1,18 +1,34 @@
-const CACHE = 'zeina-v1';
+// Ziena — Web Push Service Worker
+// Handles background push notifications from the .NET backend.
 
-self.addEventListener('install', (e) => {
-  self.skipWaiting();
+self.addEventListener('push', (event) => {
+  let data = {};
+  try { data = event.data?.json() ?? {}; } catch { /* ignore */ }
+
+  const title   = data.title  || 'زينة';
+  const options = {
+    body:    data.body  || '',
+    icon:    data.icon  || '/icons/icon-192.png',
+    badge:   '/icons/icon-192.png',
+    dir:     'rtl',
+    lang:    'ar',
+    vibrate: [200, 100, 200],
+    data:    { url: '/' },
+  };
+
+  event.waitUntil(self.registration.showNotification(title, options));
 });
 
-self.addEventListener('activate', (e) => {
-  e.waitUntil(self.clients.claim());
-});
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const url = event.notification.data?.url || '/';
 
-self.addEventListener('fetch', (e) => {
-  // Network first — fall back to cache for offline
-  if (e.request.mode === 'navigate') {
-    e.respondWith(
-      fetch(e.request).catch(() => caches.match('/'))
-    );
-  }
+  event.waitUntil(
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windowClients) => {
+      for (const client of windowClients) {
+        if ('focus' in client) return client.focus();
+      }
+      if (clients.openWindow) return clients.openWindow(url);
+    }),
+  );
 });

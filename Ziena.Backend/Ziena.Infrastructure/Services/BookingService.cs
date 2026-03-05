@@ -6,7 +6,7 @@ using Ziena.Infrastructure.Persistence;
 
 namespace Ziena.Infrastructure.Services;
 
-public class BookingService(ZienaDbContext context) : IBookingService
+public class BookingService(ZienaDbContext context, INotificationService notifications) : IBookingService
 {
     public async Task<BookingResponseDto> CreateBookingAsync(BookingCreateDto dto)
     {
@@ -36,6 +36,15 @@ public class BookingService(ZienaDbContext context) : IBookingService
 
         context.Bookings.Add(booking);
         await context.SaveChangesAsync();
+
+        // Notify merchant of the new booking (fire-and-forget, non-blocking)
+        if (merchant.ProviderRefId is not null)
+        {
+            _ = notifications.SendAsync(
+                merchant.ProviderRefId,
+                "حجز جديد! 🎉",
+                $"لديكِ حجز جديد من {dto.ClientName} بقيمة {dto.TotalPrice:N0} ريال");
+        }
 
         return MapToDto(booking, dto.ClientName, merchant.BusinessName);
     }

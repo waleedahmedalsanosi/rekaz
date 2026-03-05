@@ -5,10 +5,12 @@ namespace Ziena.Infrastructure.Persistence;
 
 public class ZienaDbContext(DbContextOptions<ZienaDbContext> options) : DbContext(options)
 {
-    public DbSet<User>     Users     => Set<User>();
-    public DbSet<Merchant> Merchants => Set<Merchant>();
-    public DbSet<Booking>  Bookings  => Set<Booking>();
-    public DbSet<Wallet>   Wallets   => Set<Wallet>();
+    public DbSet<User>                 Users                 => Set<User>();
+    public DbSet<Merchant>             Merchants             => Set<Merchant>();
+    public DbSet<Booking>              Bookings              => Set<Booking>();
+    public DbSet<Wallet>               Wallets               => Set<Wallet>();
+    public DbSet<VapidKey>             VapidKeys             => Set<VapidKey>();
+    public DbSet<UserPushSubscription> UserPushSubscriptions => Set<UserPushSubscription>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -135,6 +137,31 @@ public class ZienaDbContext(DbContextOptions<ZienaDbContext> options) : DbContex
             entity.HasIndex(w => w.MerchantId)
                   .IsUnique()
                   .HasDatabaseName("IX_Wallets_MerchantId");
+        });
+
+        // ── VapidKey (singleton row) ─────────────────────────────────────────
+        modelBuilder.Entity<VapidKey>(entity =>
+        {
+            entity.HasKey(v => v.Id);
+            entity.Property(v => v.PublicKey).IsRequired();
+            entity.Property(v => v.PrivateKey).IsRequired();
+        });
+
+        // ── UserPushSubscription ─────────────────────────────────────────────
+        modelBuilder.Entity<UserPushSubscription>(entity =>
+        {
+            entity.HasKey(s => s.Id);
+
+            entity.Property(s => s.UserRef)
+                  .IsRequired()
+                  .HasMaxLength(100);
+
+            entity.Property(s => s.Endpoint).IsRequired();
+            entity.Property(s => s.P256DH).IsRequired();
+            entity.Property(s => s.Auth).IsRequired();
+
+            entity.HasIndex(s => s.UserRef)
+                  .HasDatabaseName("IX_UserPushSubscriptions_UserRef");
         });
     }
 }

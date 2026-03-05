@@ -6,7 +6,7 @@ using Ziena.Infrastructure.Persistence;
 
 namespace Ziena.Infrastructure.Services;
 
-public class WalletService(ZienaDbContext context) : IWalletService
+public class WalletService(ZienaDbContext context, INotificationService notifications) : IWalletService
 {
     public async Task<WalletDto> GetWalletAsync(Guid merchantId)
     {
@@ -63,6 +63,22 @@ public class WalletService(ZienaDbContext context) : IWalletService
             .Where(b => b.MerchantId == wallet.MerchantId &&
                         (b.Status == BookingStatus.Pending || b.Status == BookingStatus.Confirmed))
             .SumAsync(b => b.TotalPrice);
+
+        // Notify merchant — fire-and-forget
+        var merchantRef = await context.Merchants
+            .AsNoTracking()
+            .Where(m => m.Id == wallet.MerchantId)
+            .Select(m => m.ProviderRefId)
+            .FirstOrDefaultAsync();
+
+        if (merchantRef is not null)
+        {
+            var credited = booking.TotalPrice - booking.EscrowAmount;
+            _ = notifications.SendAsync(
+                merchantRef,
+                "تم استلام الدفع! 💰",
+                $"تم إضافة {credited:N0} ريال لمحفظتك!");
+        }
 
         return new WalletDto(wallet.MerchantId, wallet.AvailableBalance, pendingBalance);
     }

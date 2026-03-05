@@ -16,6 +16,7 @@ public static class InfrastructureServiceExtensions
         services.AddDbContext<ZienaDbContext>(options =>
             options.UseSqlite(configuration.GetConnectionString("Default")));
 
+        services.AddSingleton<INotificationService, NotificationService>();
         services.AddScoped<IBookingService, BookingService>();
         services.AddScoped<IWalletService, WalletService>();
         services.AddScoped<IAdminService, AdminService>();

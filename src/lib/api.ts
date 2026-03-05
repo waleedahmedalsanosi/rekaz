@@ -338,6 +338,12 @@ export function mapDotNetWalletToApi(dto: DotNetWalletDto): ApiWallet {
 }
 
 export const dotnetApi = {
+  notifications: {
+    getVapidPublicKey: () =>
+      dotnetRequest<{ publicKey: string }>('GET', '/notifications/vapid-public-key'),
+    subscribe: (dto: DotNetPushSubscriptionDto) =>
+      dotnetRequest<{ success: boolean }>('POST', '/notifications/subscribe', dto),
+  },
   admin: {
     platformStats: () =>
       dotnetRequest<DotNetPlatformStatsDto>('GET', '/admin/stats'),
@@ -419,4 +425,12 @@ export interface ApiAdminStats {
   pendingPayouts: number;
   activeSubscriptions: number;
   topProviders: (ApiProvider & { totalIncome: number })[];
+}
+
+/** POST /api/notifications/subscribe */
+export interface DotNetPushSubscriptionDto {
+  userRef:   string;  // Node.js provider ID (e.g. "p1")
+  endpoint:  string;  // push service URL
+  p256dh:    string;  // DH public key (base64url)
+  auth:      string;  // auth secret (base64url)
 }

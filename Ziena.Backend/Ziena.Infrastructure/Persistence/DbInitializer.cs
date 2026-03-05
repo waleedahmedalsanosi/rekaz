@@ -1,4 +1,6 @@
+using Microsoft.EntityFrameworkCore;
 using Ziena.Domain.Entities;
+using Ziena.Infrastructure.Services;
 
 namespace Ziena.Infrastructure.Persistence;
 
@@ -14,6 +16,20 @@ public static class DbInitializer
     public static void Initialize(ZienaDbContext context)
     {
         context.Database.EnsureCreated();
+
+        // Ensure new tables exist for DBs created before this migration
+        context.Database.ExecuteSqlRaw(@"CREATE TABLE IF NOT EXISTS ""VapidKeys"" (""Id"" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, ""PublicKey"" TEXT NOT NULL DEFAULT '', ""PrivateKey"" TEXT NOT NULL DEFAULT '')");
+        context.Database.ExecuteSqlRaw(@"CREATE TABLE IF NOT EXISTS ""UserPushSubscriptions"" (""Id"" TEXT NOT NULL CONSTRAINT ""PK_UserPushSubscriptions"" PRIMARY KEY, ""UserRef"" TEXT NOT NULL DEFAULT '', ""Endpoint"" TEXT NOT NULL DEFAULT '', ""P256DH"" TEXT NOT NULL DEFAULT '', ""Auth"" TEXT NOT NULL DEFAULT '', ""CreatedAt"" TEXT NOT NULL DEFAULT '')");
+        context.Database.ExecuteSqlRaw(@"CREATE INDEX IF NOT EXISTS ""IX_UserPushSubscriptions_UserRef"" ON ""UserPushSubscriptions"" (""UserRef"")");
+
+        // Generate VAPID keys once on first startup
+        if (!context.VapidKeys.Any())
+        {
+            var (pub, priv) = NotificationService.GenerateVapidKeys();
+            context.VapidKeys.Add(new VapidKey { PublicKey = pub, PrivateKey = priv });
+            context.SaveChanges();
+            Console.WriteLine($"[Ziena] Generated VAPID public key: {pub}");
+        }
 
         if (context.Users.Any()) return; // Already seeded
 
