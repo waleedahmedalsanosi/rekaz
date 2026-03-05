@@ -19,6 +19,7 @@ function formatProvider(row: any) {
     reviewCount: row.review_count,
     phone: row.phone,
     userId: row.user_id,
+    workingHours: row.working_hours ? JSON.parse(row.working_hours) : null,
   };
 }
 
@@ -32,10 +33,22 @@ router.get('/', async (req, res) => {
   } catch { res.status(500).json({ error: 'خطأ في الخادم' }); }
 });
 
+// GET /api/providers/me — get own profile (must be before /:id)
+router.get('/me', requireAuth, async (req: AuthRequest, res) => {
+  try {
+    if (req.userRole !== 'PROVIDER') return res.status(403).json({ error: 'للمزودين فقط' });
+    const row = await db.prepare(
+      `SELECT p.*, u.name, u.avatar, u.phone FROM providers p JOIN users u ON u.id = p.user_id WHERE p.user_id = ?`
+    ).get(req.userId) as any;
+    if (!row) return res.status(404).json({ error: 'غير موجود' });
+    res.json(formatProvider(row));
+  } catch { res.status(500).json({ error: 'خطأ في الخادم' }); }
+});
+
 // PATCH /api/providers/me — update own profile (must be before /:id)
 router.patch('/me', requireAuth, async (req: AuthRequest, res) => {
   try {
-    const { name, specialty, bio, city, phone, coveredNeighborhoods } = req.body;
+    const { name, specialty, bio, city, phone, coveredNeighborhoods, workingHours } = req.body;
     if (req.userRole !== 'PROVIDER') return res.status(403).json({ error: 'للمزودين فقط' });
 
     if (name || phone) {
@@ -48,10 +61,12 @@ router.patch('/me', requireAuth, async (req: AuthRequest, res) => {
         specialty = COALESCE(?, specialty),
         bio = COALESCE(?, bio),
         city = COALESCE(?, city),
-        covered_neighborhoods = COALESCE(?, covered_neighborhoods)
+        covered_neighborhoods = COALESCE(?, covered_neighborhoods),
+        working_hours = COALESCE(?, working_hours)
        WHERE user_id = ?`
     ).run(specialty || null, bio || null, city || null,
       coveredNeighborhoods ? JSON.stringify(coveredNeighborhoods) : null,
+      workingHours !== undefined ? JSON.stringify(workingHours) : null,
       req.userId);
 
     const row = await db.prepare(

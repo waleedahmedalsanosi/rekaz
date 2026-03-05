@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import {
   Home, Calendar, ShoppingBag, Users, Settings, Plus, TrendingUp, Star,
-  CheckCircle, Clock, LogOut, ChevronRight, ArrowLeft, Gift, PieChart,
+  CheckCircle, Clock, LogOut, ChevronRight, ArrowLeft, PieChart,
   MessageSquare, Camera, MapPin, Save, Wallet, Send, AlertCircle, ShieldCheck, Bell,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
@@ -62,16 +62,7 @@ export default function ProviderApp() {
   const [bookings, setBookings] = useState<ApiBooking[]>([]);
   const [customers, setCustomers] = useState<any[]>([]);
   const [services, setServices] = useState<ApiService[]>([]);
-  const [coupons] = useState([
-    { code: 'WELCOME20', discount: '20%', usage: '15/50' },
-    { code: 'RAMADAN', discount: '50 ﷼', usage: '120/200' },
-  ]);
-  const [workingHours, setWorkingHours] = useState(() => {
-    try {
-      const saved = localStorage.getItem('zeina_working_hours');
-      return saved ? JSON.parse(saved) : INIT_HOURS;
-    } catch { return INIT_HOURS; }
-  });
+  const [workingHours, setWorkingHours] = useState(INIT_HOURS);
   const [wallet, setWallet] = useState<DotNetWalletDto>({ merchantId: '', availableBalance: 0, pendingBalance: 0 });
   const [transactions, setTransactions] = useState<ApiTransaction[]>([]);
   const [conversations, setConversations] = useState<ApiConversation[]>([]);
@@ -100,18 +91,20 @@ export default function ProviderApp() {
   async function loadData() {
     setDataLoading(true);
     try {
-      const [bkgs, svcs, convs, w, txns] = await Promise.all([
+      const [bkgs, svcs, convs, w, txns, myProfile] = await Promise.all([
         api.bookings.list(),
         api.services.list(),
         api.conversations.list(),
         dotnetApi.wallet.get(user?.providerId ?? ''),
         api.wallet.transactions(),
+        api.providers.getMe().catch(() => null),
       ]);
       setBookings(bkgs);
       setServices(svcs);
       setConversations(convs);
       setWallet(w);
       setTransactions(txns);
+      if (myProfile?.workingHours) setWorkingHours(myProfile.workingHours);
       // Derive unique customers from bookings
       const custMap = new Map<string, any>();
       bkgs.forEach(b => {
@@ -270,7 +263,7 @@ export default function ProviderApp() {
       if (!publicKey) throw new Error("لم يتم العثور على مفتاح VAPID");
       const pushSub = await reg.pushManager.subscribe({
         userVisibleOnly: true,
-        applicationServerKey: urlBase64ToUint8Array(publicKey),
+        applicationServerKey: urlBase64ToUint8Array(publicKey) as unknown as ArrayBuffer,
       });
       const json = pushSub.toJSON();
       const dto: DotNetPushSubscriptionDto = {
@@ -635,7 +628,6 @@ export default function ProviderApp() {
             { id: 'hours', label: 'أوقات العمل', icon: Clock },
             { id: 'wallet', label: 'المحفظة والأرباح', icon: Wallet },
             { id: 'messages', label: 'رسائل العملاء', icon: MessageSquare, badge: unreadMessages },
-            { id: 'marketing', label: 'التسويق والكوبونات', icon: Gift },
             { id: 'reports', label: 'التقارير والإحصائيات', icon: PieChart },
             { id: 'notifications', label: 'التنبيهات', icon: Bell },
           ].map((item) => (
@@ -816,33 +808,6 @@ export default function ProviderApp() {
     );
   };
 
-  // ─── Render: Marketing ───────────────────────────────────────────────────
-  const renderMarketing = () => (
-    <div className="space-y-6 pb-24">
-      <div className="flex items-center gap-4">
-        <button onClick={() => setSubView(null)} className="p-2 bg-white rounded-xl shadow-sm"><ArrowLeft size={20} /></button>
-        <h2 className="text-2xl font-black">التسويق</h2>
-      </div>
-      <div className="bg-white rounded-4xl border border-gray-100 p-6 shadow-sm">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="font-bold">كوبونات الخصم</h3>
-          <button onClick={() => toast('إدارة الكوبونات قريباً ✨', 'info')} className="text-xs font-bold text-orange-600 flex items-center gap-1"><Plus size={14} /> إضافة</button>
-        </div>
-        <div className="space-y-3">
-          {coupons.map((c, i) => (
-            <div key={i} className="p-4 border border-dashed border-orange-200 rounded-2xl bg-orange-50/50 flex items-center justify-between">
-              <div>
-                <p className="font-mono font-black text-orange-600">{c.code}</p>
-                <p className="text-[10px] text-gray-500">خصم {c.discount}</p>
-              </div>
-              <p className="text-[10px] font-bold text-gray-400">الاستخدام: {c.usage}</p>
-            </div>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-
   // ─── Render: Working Hours ───────────────────────────────────────────────
   const renderWorkingHours = () => (
     <div className="space-y-6 pb-24">
@@ -877,10 +842,18 @@ export default function ProviderApp() {
         ))}
       </div>
       <button
-        onClick={() => {
-          localStorage.setItem('zeina_working_hours', JSON.stringify(workingHours));
-          toast('تم حفظ أوقات العمل ✓');
-          setSubView(null);
+        onClick={async () => {
+          try {
+            await api.providers.updateMe({ workingHours });
+            // Sync to .NET for AvailabilityEngine (fire-and-forget)
+            if (user?.providerId) {
+              dotnetApi.merchants.updateWorkingHours(user.providerId, JSON.stringify(workingHours)).catch(() => {});
+            }
+            toast('تم حفظ أوقات العمل ✓');
+            setSubView(null);
+          } catch (e: any) {
+            toast(e.message || 'فشل حفظ أوقات العمل', 'error');
+          }
         }}
         className="w-full bg-black text-white py-5 rounded-3xl font-black flex items-center justify-center gap-2"
       >
@@ -1040,7 +1013,6 @@ export default function ProviderApp() {
             exit={{ opacity: 0, y: -10 }}
             transition={{ duration: 0.18 }}
           >
-            {subView === 'marketing' && renderMarketing()}
             {subView === 'hours' && renderWorkingHours()}
             {subView === 'store' && renderStoreInfo()}
             {subView === 'reports' && renderReports()}

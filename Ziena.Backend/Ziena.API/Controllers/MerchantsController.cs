@@ -28,4 +28,26 @@ public class MerchantsController(IMerchantService merchantService) : ControllerB
             });
         }
     }
+
+    // PATCH api/merchants/{providerRefId}/working-hours
+    [HttpPatch("{providerRefId}/working-hours")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    public async Task<IActionResult> UpdateWorkingHours(string providerRefId, [FromBody] UpdateWorkingHoursRequest request)
+    {
+        try
+        {
+            await merchantService.UpdateWorkingHoursAsync(providerRefId, request.WorkingHoursJson);
+            return NoContent();
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return NotFound(new { messageAr = "المزوّدة غير موجودة", detail = ex.Message });
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(new { messageAr = "حدث خطأ أثناء حفظ أوقات العمل", detail = ex.Message });
+        }
+    }
 }
+
+public record UpdateWorkingHoursRequest(string WorkingHoursJson);

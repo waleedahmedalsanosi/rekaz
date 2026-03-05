@@ -1,9 +1,9 @@
 # وثيقة متطلبات المنتج (PRD)
 # ركاز — منصة حجز خبيرات التجميل
 
-**الإصدار:** 1.2
-**التاريخ:** فبراير 2026
-**الحالة:** قيد التطوير — MVP مكتمل (Frontend)
+**الإصدار:** 1.3
+**التاريخ:** مارس 2026
+**الحالة:** MVP مكتمل (Frontend + Backend) — قيد التحسين والتوسع
 
 ---
 
@@ -717,32 +717,37 @@ features     : string[]
 
 ## 16. متطلبات التقنية
 
-### 16.1 الواجهة الأمامية (Frontend) — الحالي
+### 16.1 الواجهة الأمامية (Frontend)
 
-- **Framework:** React 19 + TypeScript
-- **Build Tool:** Vite 6 (port 3000)
-- **Styling:** Tailwind CSS v4 (@tailwindcss/vite)
-- **Animation:** motion/react (Framer Motion v12)
-- **Charts:** Recharts v3.7
+- **Framework:** React 18 + TypeScript
+- **Build Tool:** Vite (port 3000)
+- **Styling:** Tailwind CSS
+- **Animation:** motion/react (Framer Motion)
+- **Charts:** Recharts
 - **Icons:** Lucide React
 - **Utilities:** date-fns، clsx، tailwind-merge
-- **AI SDK:** @google/genai (مستقبلي)
 
-### 16.2 الواجهة الخلفية (Backend) — مستقبلي
+### 16.2 الواجهة الخلفية — Node.js (الحالي)
 
-- **Runtime:** Node.js + Express أو Next.js API Routes
-- **Database:** PostgreSQL (أو SQLite للتطوير)
-- **ORM:** Prisma
-- **Auth:** JWT + bcrypt
-- **File Storage:** S3 / Cloudinary
-- **Caching:** Redis
+- **Runtime:** Node.js + Express + TypeScript
+- **Database:** Turso (LibSQL) في الإنتاج، SQLite محلياً
+- **Auth:** JWT مخزّن في localStorage
+- **Port:** 3001
+- **Routes:** auth، providers، services، bookings، messages، wallet، reviews، admin
 
-### 16.3 البنية التحتية — مستقبلي
+### 16.3 الواجهة الخلفية — .NET 10 (الحالي)
 
-- **Hosting:** Vercel (Frontend) + Railway / Render (Backend)
-- **CDN:** Cloudflare
-- **CI/CD:** GitHub Actions
-- **Monitoring:** Sentry
+- **Framework:** ASP.NET Core 10 — Clean Architecture
+- **Database:** EF Core + SQLite
+- **Port:** 5000
+- **Modules:** Bookings، Wallet، Merchants، Admin، Availability Engine
+- **Pattern:** ProviderRefId Bridge — يربط معرّفات Node.js النصية بـ GUID الخاصة بـ .NET
+
+### 16.4 البنية التحتية
+
+- **Hosting:** Render (خدمتان: Node.js + Docker لـ .NET)
+- **CI/CD:** GitHub → Render (auto-deploy on push to main)
+- **Vite Proxy (Dev):** `/api/*` → 3001، `/dotnet-api/*` → 5000
 
 ---
 
@@ -752,77 +757,80 @@ features     : string[]
 
 | المكوّن | الحالة |
 |--------|-------|
-| بنية المشروع (React + Vite + Tailwind v4) | ✅ مكتمل |
-| نظام الأدوار الثلاثة (Admin / Provider / Client) | ✅ مكتمل |
+| React SPA — نظام الأدوار الثلاثة | ✅ مكتمل |
 | لوحة تحكم المشرف الكاملة | ✅ مكتمل |
 | لوحة تحكم المبدعة الكاملة | ✅ مكتمل |
 | لوحة تحكم العميلة الكاملة | ✅ مكتمل |
-| نظام Escrow (عمولة 2% + تفصيل الأسعار) | ✅ مكتمل |
-| نظام التأكيد المزدوج (clientConfirmed + providerConfirmed) | ✅ مكتمل |
-| نظام النزاعات (إنشاء + حل من المشرف) | ✅ مكتمل |
+| Node.js/Express Backend — Auth، Providers، Services، Messages، Reviews، Admin | ✅ مكتمل |
+| .NET 10 Backend — Bookings، Wallet، Merchants، Availability Engine | ✅ مكتمل |
+| قاعدة بيانات Turso (LibSQL) في الإنتاج | ✅ مكتمل |
+| مصادقة OTP (مشفّرة بـ JWT، OTP ثابت `1234` في MVP) | ✅ مكتمل |
+| إنشاء الحجوزات بنمط Dual-Write (Node.js + .NET) | ✅ مكتمل |
+| محرك التوافر (Availability Engine) في .NET | ✅ مكتمل |
+| نظام Escrow (عمولة 2% + تأكيد مزدوج) | ✅ مكتمل |
 | نظام المحفظة (رصيد + معلّق + سجل معاملات) | ✅ مكتمل |
 | نظام طلبات السحب (IBAN + موافقة المشرف) | ✅ مكتمل |
+| نظام النزاعات (إنشاء + حل من المشرف) | ✅ مكتمل |
 | نظام الرسائل الداخلية (محادثات + رسائل) | ✅ مكتمل |
-| أحياء الرياض 21 حياً (chip selector) | ✅ مكتمل |
-| توثيق المبدعات (badge + toggle من المشرف) | ✅ مكتمل |
-| باقات الاشتراك الثلاث (مجانية/أساسية/برو) | ✅ مكتمل |
-| خصوصية رقم العميلة (يظهر بعد التأكيد المزدوج) | ✅ مكتمل |
-| إدارة الخدمات CRUD | ✅ مكتمل |
-| إدارة الحجوزات (قبول/رفض) | ✅ مكتمل |
+| إشعارات Web Push للمبدعات | ✅ مكتمل |
+| توثيق المبدعات + إدارة الخدمات CRUD | ✅ مكتمل |
 | نظام التقييم والمراجعات | ✅ مكتمل |
-| المخططات البيانية (Recharts) | ✅ مكتمل |
-| دعم RTL كامل | ✅ مكتمل |
+| دعم RTL كامل + أحياء الرياض (21 حياً) | ✅ مكتمل |
+| النشر على Render (Node.js + Docker لـ .NET) | ✅ مكتمل |
 
 ### 17.2 ما يحتاج إكمالاً 🔧
 
 | المكوّن | الوصف |
 |--------|-------|
-| أوقات العمل | واجهة موجودة، منطق الحفظ غير مكتمل |
-| البحث والفلترة | شريط البحث موجود، المنطق غير مربوط |
+| أوقات العمل | واجهة موجودة، الحفظ في localStorage فقط — لا يوجد API endpoint |
+| مصادقة OTP حقيقية | OTP ثابت `1234` — يحتاج تكامل SMS (Unifonic / Twilio) |
+| بوابة دفع | الدفع محاكى حالياً — يحتاج Tap / Moyasar |
+| رفع الصور | أيقونة الكاميرا placeholder — يحتاج S3 / Cloudinary |
+| كوبونات التسويق | واجهة موجودة، لا يوجد backend |
+| إلغاء الحجوزات التلقائي | بعد 24 ساعة بدون تأكيد — يحتاج cron job |
 
 ### 17.3 ما لم يُبنَ بعد ❌
 
 | المكوّن | الأولوية |
 |--------|---------|
-| Backend API + قاعدة بيانات حقيقية | عالية |
-| مصادقة حقيقية (OTP عبر SMS) | عالية |
-| بوابة دفع حقيقية | عالية |
-| إشعارات Push | عالية |
-| استمرارية الجلسة (Session Persistence) | عالية |
-| رفع الصور | عالية |
-| إلغاء الحجوزات + استرداد الأموال | عالية |
-| النزاعات التلقائية (cron job بعد 24h) | عالية |
+| تطبيق iOS / Android (React Native) | متوسطة |
 | واتساب Business API | متوسطة |
-| مساعد AI (Gemini) | منخفضة |
+| نظام الاشتراكات الكامل مع إنفاذ الحدود | متوسطة |
+| مساعد AI (Gemini) للتوصيات | منخفضة |
+| برنامج ولاء ونقاط | منخفضة |
 
 ---
 
 ## 18. خارطة الطريق (Roadmap)
 
-### المرحلة 1 — MVP Backend (الشهر 1-2)
-- [ ] ربط Backend حقيقي (Express + PostgreSQL)
-- [ ] مصادقة حقيقية بـ OTP عبر SMS
-- [ ] استمرارية الجلسة (JWT)
-- [ ] حجوزات حقيقية مع حفظ قاعدة البيانات
-- [ ] رفع صور الملفات والخدمات
+### المرحلة 1 — MVP ✅ مكتملة
+- [x] React SPA — الأدوار الثلاثة
+- [x] Node.js/Express Backend — Auth، Providers، Services، Bookings، Messages، Reviews، Admin
+- [x] .NET 10 Backend — Bookings، Wallet، Merchants، Availability Engine
+- [x] Turso (LibSQL) في الإنتاج
+- [x] Dual-Write Bookings + ProviderRefId Bridge
+- [x] نظام Escrow + التأكيد المزدوج
+- [x] المحفظة + طلبات السحب
+- [x] إشعارات Web Push
+- [x] النشر على Render
 
-### المرحلة 2 — الدفع والإشعارات (الشهر 2-3)
-- [ ] تكامل بوابة الدفع (Tap / Moyasar) + Escrow حقيقي
-- [ ] إشعارات Push (Firebase)
-- [ ] cron job لإنشاء النزاعات التلقائية بعد 24 ساعة
-- [ ] تدفق إلغاء الحجز واسترداد الأموال
-- [ ] فلترة البحث الحقيقية
+### المرحلة 2 — الدفع والتكاملات الحقيقية (الحالية)
+- [ ] تكامل SMS حقيقي للـ OTP (Unifonic / Twilio)
+- [ ] بوابة دفع حقيقية (Tap / Moyasar) + Escrow حقيقي
+- [ ] رفع الصور (S3 / Cloudinary)
+- [ ] cron job للنزاعات التلقائية بعد 24 ساعة
+- [ ] Backend لأوقات العمل + كوبونات التسويق
 
-### المرحلة 3 — نمو المنصة (الشهر 3-4)
-- [ ] نظام الاشتراكات الكامل مع بوابة دفع
-- [ ] تكامل واتساب Business
-- [ ] لوحة تحكم المشرف المتكاملة + تقارير متقدمة
+### المرحلة 3 — نمو المنصة
+- [ ] نظام الاشتراكات مع إنفاذ الحدود
+- [ ] تكامل واتساب Business API
+- [ ] تقارير متقدمة للمشرف
 
-### المرحلة 4 — التحسين والتوسع (الشهر 4+)
-- [ ] مساعد AI (Gemini) للتوصيات
+### المرحلة 4 — التوسع
 - [ ] تطبيق iOS/Android (React Native)
+- [ ] مساعد AI للتوصيات
 - [ ] برنامج ولاء ونقاط
-- [ ] دعم مناطق متعددة
+- [ ] دعم مناطق متعددة خارج الرياض
 
 ---
 
@@ -848,7 +856,8 @@ features     : string[]
 
 | المصطلح | التعريف |
 |---------|--------|
-| ركاز | اسم المنصة (يعني الثبات والتمكين بالعربية) |
+| زينة / Ziena | اسم المنصة |
+| ركاز | الاسم التجاري السابق (المستخدم في GitHub repo) |
 | المبدعة | مزودة الخدمة (خبيرة تجميل) |
 | العميلة | المستخدمة التي تحجز الخدمات |
 | المشرف | مدير المنصة |
@@ -862,4 +871,4 @@ features     : string[]
 
 ---
 
-*الإصدار 1.2 — تم التحديث بناءً على الميزات المنفذة فعلياً في الكود المصدري.*
+*الإصدار 1.3 — تم التحديث مارس 2026 بناءً على الحالة الفعلية للكود المصدري: Frontend + Node.js Backend + .NET 10 Backend مكتملون ومنشورون على Render.*

@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Ziena.Application.DTOs;
 using Ziena.Application.Interfaces;
@@ -139,10 +140,53 @@ public class BookingService(ZienaDbContext context, INotificationService notific
             .ToListAsync();
 
         return allMerchants
-            .Where(m => !busyIds.Contains(m.Id))
+            .Where(m => !busyIds.Contains(m.Id) && IsWithinWorkingHours(m, time))
             .Select(m => new MerchantAvailabilityDto(m.Id, m.BusinessName, m.Bio, m.IsVerified, m.ProviderRefId))
             .ToList();
     }
+
+    private static bool IsWithinWorkingHours(Domain.Entities.Merchant merchant, DateTime time)
+    {
+        if (string.IsNullOrEmpty(merchant.WorkingHoursJson)) return true; // no hours set → always available
+
+        try
+        {
+            var entries = JsonSerializer.Deserialize<WorkingHourEntry[]>(merchant.WorkingHoursJson,
+                new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+            if (entries is null || entries.Length == 0) return true;
+
+            var dayName = time.DayOfWeek switch
+            {
+                DayOfWeek.Sunday    => "الأحد",
+                DayOfWeek.Monday    => "الإثنين",
+                DayOfWeek.Tuesday   => "الثلاثاء",
+                DayOfWeek.Wednesday => "الأربعاء",
+                DayOfWeek.Thursday  => "الخميس",
+                DayOfWeek.Friday    => "الجمعة",
+                DayOfWeek.Saturday  => "السبت",
+                _                   => ""
+            };
+
+            var entry = Array.Find(entries, e => e.Day == dayName);
+            if (entry is null || !entry.Enabled) return false;
+
+            var requestedMinutes = time.Hour * 60 + time.Minute;
+            var startParts = entry.Start.Split(':');
+            var endParts   = entry.End.Split(':');
+            if (startParts.Length < 2 || endParts.Length < 2) return true;
+
+            var startMinutes = int.Parse(startParts[0]) * 60 + int.Parse(startParts[1]);
+            var endMinutes   = int.Parse(endParts[0])   * 60 + int.Parse(endParts[1]);
+
+            return requestedMinutes >= startMinutes && requestedMinutes < endMinutes;
+        }
+        catch
+        {
+            return true; // malformed JSON → treat as available
+        }
+    }
+
+    private record WorkingHourEntry(string Day, bool Enabled, string Start, string End);
 
     private static BookingResponseDto MapToDto(Booking booking, string clientName, string merchantName) =>
         new(

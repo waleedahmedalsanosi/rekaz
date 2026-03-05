@@ -20,4 +20,14 @@ public class MerchantService(ZienaDbContext context) : IMerchantService
                 m.ProviderRefId))
             .ToListAsync();
     }
+
+    public async Task UpdateWorkingHoursAsync(string providerRefId, string workingHoursJson)
+    {
+        var merchant = await context.Merchants
+            .FirstOrDefaultAsync(m => m.ProviderRefId == providerRefId)
+            ?? throw new KeyNotFoundException($"Merchant with ProviderRefId '{providerRefId}' not found.");
+
+        merchant.WorkingHoursJson = workingHoursJson;
+        await context.SaveChangesAsync();
+    }
 }

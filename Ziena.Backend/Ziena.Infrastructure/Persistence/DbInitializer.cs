@@ -24,6 +24,9 @@ public static class DbInitializer
 
         // Add ExternalId column to Bookings for cross-system Node.js UUID lookup
         try { context.Database.ExecuteSqlRaw(@"ALTER TABLE ""Bookings"" ADD COLUMN ""ExternalId"" TEXT"); } catch { /* column already exists */ }
+
+        // Add WorkingHoursJson column to Merchants
+        try { context.Database.ExecuteSqlRaw(@"ALTER TABLE ""Merchants"" ADD COLUMN ""WorkingHoursJson"" TEXT"); } catch { /* column already exists */ }
         context.Database.ExecuteSqlRaw(@"CREATE UNIQUE INDEX IF NOT EXISTS ""IX_Bookings_ExternalId"" ON ""Bookings"" (""ExternalId"") WHERE ""ExternalId"" IS NOT NULL");
 
         // Generate VAPID keys once on first startup

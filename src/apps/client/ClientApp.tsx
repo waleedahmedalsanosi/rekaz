@@ -308,7 +308,7 @@ export default function ClientApp() {
                   </div>
                 )}
               </div>
-              <h4 className="font-bold text-sm">{provider.name}</h4>
+              <h4 className="font-bold text-sm">{businessNameMap[provider.id] || provider.name}</h4>
               <p className="text-[10px] text-gray-400 mb-2">{provider.specialty}</p>
               <div className="flex items-center justify-center gap-1 text-orange-500 font-black text-xs">
                 <Star size={12} fill="currentColor" />

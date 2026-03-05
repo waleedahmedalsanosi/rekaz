@@ -10,4 +10,6 @@ public class Merchant : BaseEntity
     public string? IBAN { get; set; }
     public bool IsVerified { get; set; }
     public decimal CommissionRate { get; set; } = 0.02m;
+    /// <summary>JSON array of working-hour entries: [{day,enabled,start,end}]</summary>
+    public string? WorkingHoursJson { get; set; }
 }

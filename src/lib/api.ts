@@ -54,6 +54,7 @@ export const api = {
   providers: {
     list: () => request<ApiProvider[]>('GET', '/providers'),
     get: (id: string) => request<ApiProvider>('GET', `/providers/${id}`),
+    getMe: () => request<ApiProvider>('GET', '/providers/me'),
     services: (id: string) => request<ApiService[]>('GET', `/providers/${id}/services`),
     reviews: (id: string) => request<ApiReview[]>('GET', `/providers/${id}/reviews`),
     updateMe: (data: Partial<ApiProvider & { name: string; phone: string }>) =>
@@ -178,6 +179,14 @@ export interface ApiProvider {
   reviewCount?: number;
   phone?: string;
   userId?: string;
+  workingHours?: WorkingHourEntry[] | null;
+}
+
+export interface WorkingHourEntry {
+  day: string;
+  enabled: boolean;
+  start: string;
+  end: string;
 }
 
 export interface ApiService {
@@ -371,6 +380,8 @@ export const dotnetApi = {
   merchants: {
     getAll: () =>
       dotnetRequest<DotNetMerchantDto[]>('GET', '/merchants'),
+    updateWorkingHours: (providerRefId: string, workingHoursJson: string) =>
+      dotnetRequest<void>('PATCH', `/merchants/${encodeURIComponent(providerRefId)}/working-hours`, { workingHoursJson }),
   },
   bookings: {
     merchantBookings: (merchantId: string) =>
