@@ -20,6 +20,48 @@ async function getUserWithProvider(userId: string) {
   ).get(userId) as any;
 }
 
+// ─── OTPless helpers ──────────────────────────────────────────────────────────
+// When OTPLESS_CLIENT_ID + OTPLESS_CLIENT_SECRET are set, OTPs are delivered via
+// WhatsApp (OTPless). Otherwise a random code is printed to the console (dev/test).
+const OTPLESS_BASE = 'https://auth.otpless.app/auth/otp/v1';
+
+async function sendOtpless(phone: string): Promise<string | null> {
+  const clientId = process.env.OTPLESS_CLIENT_ID;
+  const clientSecret = process.env.OTPLESS_CLIENT_SECRET;
+  if (!clientId || !clientSecret) return null;
+
+  // Normalise phone to E.164 without '+' (OTPless expects digits only, country code first)
+  const normalised = phone.startsWith('0') ? `966${phone.slice(1)}` : phone.replace(/\D/g, '');
+
+  const res = await fetch(`${OTPLESS_BASE}/send`, {
+    method: 'POST',
+    headers: { 'clientId': clientId, 'clientSecret': clientSecret, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ phoneNumber: normalised, otpLength: 6, channel: 'WHATSAPP', expiry: 300 }),
+  });
+  const data = await res.json() as any;
+  if (!res.ok || !data.orderId) {
+    console.error('[OTPless] send failed:', data);
+    return null;
+  }
+  return data.orderId as string;
+}
+
+async function verifyOtpless(phone: string, orderId: string, code: string): Promise<boolean> {
+  const clientId = process.env.OTPLESS_CLIENT_ID;
+  const clientSecret = process.env.OTPLESS_CLIENT_SECRET;
+  if (!clientId || !clientSecret) return false;
+
+  const normalised = phone.startsWith('0') ? `966${phone.slice(1)}` : phone.replace(/\D/g, '');
+
+  const res = await fetch(`${OTPLESS_BASE}/verify`, {
+    method: 'POST',
+    headers: { 'clientId': clientId, 'clientSecret': clientSecret, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ phoneNumber: normalised, otp: code, orderId }),
+  });
+  const data = await res.json() as any;
+  return !!data.isOTPVerified;
+}
+
 // POST /api/auth/send-otp
 router.post('/send-otp', async (req, res) => {
   try {
@@ -27,13 +69,21 @@ router.post('/send-otp', async (req, res) => {
     if (!phone || phone.length < 9) {
       return res.status(400).json({ error: 'رقم الجوال غير صحيح' });
     }
-    const code = Math.floor(1000 + Math.random() * 9000).toString();
-    if (process.env.NODE_ENV !== 'production') {
-      console.log(`[OTP] Phone: ${phone} → Code: ${code}`);
-    }
+
     const expiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString();
-    await db.prepare('INSERT OR REPLACE INTO otp_codes (phone, code, expires_at) VALUES (?,?,?)').run(phone, code, expiresAt);
-    res.json({ success: true, message: 'تم إرسال رمز التحقق' });
+
+    const orderId = await sendOtpless(phone);
+    if (orderId) {
+      // Store orderId in the code column — verified via OTPless API on verify-otp
+      await db.prepare('INSERT OR REPLACE INTO otp_codes (phone, code, expires_at) VALUES (?,?,?)').run(phone, orderId, expiresAt);
+      res.json({ success: true, message: 'تم إرسال رمز التحقق عبر واتساب', via: 'whatsapp' });
+    } else {
+      // Fallback: random code printed to console (dev / OTPless not configured)
+      const code = Math.floor(100000 + Math.random() * 900000).toString();
+      console.log(`[OTP] Phone: ${phone} → Code: ${code}`);
+      await db.prepare('INSERT OR REPLACE INTO otp_codes (phone, code, expires_at) VALUES (?,?,?)').run(phone, code, expiresAt);
+      res.json({ success: true, message: 'تم إرسال رمز التحقق', via: 'console' });
+    }
   } catch { res.status(500).json({ error: 'خطأ في الخادم' }); }
 });
 
@@ -43,11 +93,23 @@ router.post('/verify-otp', async (req, res) => {
     const { phone, code, role, name, specialty, city } = req.body;
     if (!phone || !code) return res.status(400).json({ error: 'بيانات ناقصة' });
 
+    // Check for a stored record (contains either an orderId or a local code)
     const otpRecord = await db.prepare(
-      `SELECT * FROM otp_codes WHERE phone = ? AND code = ? AND expires_at > datetime('now')`
-    ).get(phone, code) as any;
+      `SELECT * FROM otp_codes WHERE phone = ? AND expires_at > datetime('now')`
+    ).get(phone) as any;
 
     if (!otpRecord) return res.status(400).json({ error: 'رمز التحقق غير صحيح أو منتهي' });
+
+    // If OTPless is configured, verify via API (the stored "code" is the orderId)
+    const useOtpless = !!(process.env.OTPLESS_CLIENT_ID && process.env.OTPLESS_CLIENT_SECRET);
+    let verified = false;
+    if (useOtpless) {
+      verified = await verifyOtpless(phone, otpRecord.code, code);
+    } else {
+      verified = otpRecord.code === code;
+    }
+
+    if (!verified) return res.status(400).json({ error: 'رمز التحقق غير صحيح أو منتهي' });
 
     await db.prepare('DELETE FROM otp_codes WHERE phone = ?').run(phone);
 

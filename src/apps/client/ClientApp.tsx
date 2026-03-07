@@ -8,7 +8,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { RIYADH_NEIGHBORHOODS } from '../../lib/mockData';
 import { BookingStatus, PaymentStatus } from '../../lib/types';
 import { useToast } from '../../components/Toast';
-import { api, dotnetApi, DotNetMerchantDto, DotNetMerchantAvailabilityDto, DotNetAvailabilityResponseDto, ApiProvider, ApiService, ApiBooking, ApiConversation, ApiMessage, ApiReview } from '../../lib/api';
+import { api, dotnetApi, MoyasarSource, DotNetMerchantDto, DotNetMerchantAvailabilityDto, DotNetAvailabilityResponseDto, ApiProvider, ApiService, ApiBooking, ApiConversation, ApiMessage, ApiReview } from '../../lib/api';
 import { useAuth } from '../../contexts/AuthContext';
 
 const CATEGORIES = ['الكل', 'مكياج', 'شعر'];
@@ -40,6 +40,16 @@ export default function ClientApp() {
   const [dataLoading, setDataLoading] = useState(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
+  // ── Moyasar payment form state ──────────────────────────────────────────
+  const [payMethod, setPayMethod] = useState<'creditcard' | 'stcpay'>('creditcard');
+  const [cardName, setCardName] = useState('');
+  const [cardNumber, setCardNumber] = useState('');
+  const [cardMonth, setCardMonth] = useState('');
+  const [cardYear, setCardYear] = useState('');
+  const [cardCvc, setCardCvc] = useState('');
+  const [stcMobile, setStcMobile] = useState('');
+  const [payLoading, setPayLoading] = useState(false);
+
   // ── Availability booking flow ────────────────────────────────────────────
   // 'datetime' → user picks date+time → 'check' → 'select' (show merchants) → 'confirm'
   const [bookingStep, setBookingStep] = useState<'datetime' | 'select' | 'confirm'>('datetime');
@@ -51,6 +61,18 @@ export default function ClientApp() {
 
   useEffect(() => {
     loadData();
+    // Handle Moyasar 3DS callback redirects: /?payment_success=bookingId or /?payment_failed=reason
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('payment_success')) {
+      toast('تمت عملية الدفع بنجاح! 💳');
+      window.history.replaceState({}, '', '/');
+    } else if (params.get('payment_failed')) {
+      toast(decodeURIComponent(params.get('payment_failed') || 'فشل الدفع'), 'error');
+      window.history.replaceState({}, '', '/');
+    } else if (params.get('payment_error')) {
+      toast('حدث خطأ في التحقق من الدفع، تواصل مع الدعم', 'error');
+      window.history.replaceState({}, '', '/');
+    }
   }, []);
 
   async function loadData() {
@@ -240,9 +262,27 @@ export default function ClientApp() {
         setBookings(prev => [booking, ...prev]);
         toast('تم إرسال طلب الحجز! سيتم تأكيده قريباً ✓');
       } else if (showModal === 'process_payment') {
-        const paid = await api.bookings.pay(selectedItem.id);
-        setBookings(prev => prev.map(b => b.id === paid.id ? paid : b));
-        toast('تمت عملية الدفع بنجاح 💳');
+        if (!selectedItem) return;
+        setPayLoading(true);
+        try {
+          const source: MoyasarSource = payMethod === 'stcpay'
+            ? { type: 'stcpay', mobile: stcMobile }
+            : { type: 'creditcard', name: cardName, number: cardNumber.replace(/\s/g, ''), month: cardMonth, year: cardYear, cvc: cardCvc };
+
+          const result = await api.payments.create(selectedItem.id, source);
+
+          if (result.redirect_url) {
+            // 3DS required — redirect to Moyasar's authentication page
+            window.location.href = result.redirect_url;
+            return; // don't close modal yet
+          }
+          if (result.success) {
+            setBookings(prev => prev.map(b => b.id === selectedItem.id ? { ...b, paymentStatus: 'PAID' } : b));
+            toast('تمت عملية الدفع بنجاح 💳');
+          }
+        } finally {
+          setPayLoading(false);
+        }
       } else if (showModal === 'add_review') {
         const review = await api.reviews.create(selectedItem.id, reviewRating, reviewComment);
         setBookings(prev => prev.map(b => b.id === selectedItem.id ? { ...b, reviewId: review.id } : b));
@@ -1036,31 +1076,49 @@ export default function ClientApp() {
               {showModal === 'process_payment' && (() => {
                 const booking = selectedItem;
                 return (
-                  <div className="space-y-3">
-                    <div className="p-4 bg-gray-50 rounded-2xl border-2 border-black flex items-center gap-4">
-                      <div className="w-10 h-10 bg-black text-white rounded-xl flex items-center justify-center shrink-0">
-                        <PaymentIcon size={20} />
-                      </div>
-                      <div className="flex-1">
-                        <p className="text-xs font-bold">بطاقة مدى / فيزا</p>
-                        <p className="text-[10px] text-gray-400">**** **** **** 1234</p>
-                      </div>
-                      <CheckCircle size={18} className="text-green-500" />
+                  <div className="space-y-4">
+                    {/* Order summary */}
+                    <div className="p-3 bg-gray-50 rounded-2xl space-y-1.5 text-sm">
+                      <div className="flex justify-between"><span className="text-gray-500">سعر الخدمة</span><span className="font-bold">{booking?.servicePrice} ﷼</span></div>
+                      <div className="flex justify-between text-xs"><span className="text-gray-400">عمولة زينة (2%)</span><span className="text-gray-400">+ {booking?.commission} ﷼</span></div>
+                      <div className="border-t pt-1.5 flex justify-between"><span className="font-bold">الإجمالي</span><span className="font-black text-orange-600">{booking?.totalPrice} ﷼</span></div>
                     </div>
-                    <div className="p-4 bg-gray-50 rounded-2xl space-y-2">
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs text-gray-500">سعر الخدمة</span>
-                        <span className="text-sm font-bold">{booking?.servicePrice} ﷼</span>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs text-gray-400">عمولة زينة (2%)</span>
-                        <span className="text-xs text-gray-400">+ {booking?.commission} ﷼</span>
-                      </div>
-                      <div className="border-t border-gray-100 pt-2 flex items-center justify-between">
-                        <span className="text-sm font-bold">الإجمالي</span>
-                        <span className="font-black text-orange-600">{booking?.totalPrice} ﷼</span>
-                      </div>
+
+                    {/* Payment method toggle */}
+                    <div className="flex gap-2">
+                      {(['creditcard', 'stcpay'] as const).map(m => (
+                        <button key={m} type="button"
+                          onClick={() => setPayMethod(m)}
+                          className={`flex-1 py-2 rounded-xl text-xs font-bold border-2 transition-all ${payMethod === m ? 'border-black bg-black text-white' : 'border-gray-200 text-gray-500'}`}>
+                          {m === 'creditcard' ? '💳 بطاقة ائتمان' : '📱 STC Pay'}
+                        </button>
+                      ))}
                     </div>
+
+                    {payMethod === 'creditcard' ? (
+                      <div className="space-y-3">
+                        <input required placeholder="اسم حامل البطاقة" value={cardName} onChange={e => setCardName(e.target.value)}
+                          className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm text-right focus:outline-none focus:border-black" />
+                        <input required placeholder="رقم البطاقة" maxLength={19} value={cardNumber}
+                          onChange={e => setCardNumber(e.target.value.replace(/\D/g, '').replace(/(.{4})/g, '$1 ').trim())}
+                          className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm ltr focus:outline-none focus:border-black" />
+                        <div className="flex gap-2">
+                          <input required placeholder="MM" maxLength={2} value={cardMonth} onChange={e => setCardMonth(e.target.value.replace(/\D/g, ''))}
+                            className="w-20 border border-gray-200 rounded-xl px-3 py-2.5 text-sm text-center focus:outline-none focus:border-black" />
+                          <input required placeholder="YY" maxLength={2} value={cardYear} onChange={e => setCardYear(e.target.value.replace(/\D/g, ''))}
+                            className="w-20 border border-gray-200 rounded-xl px-3 py-2.5 text-sm text-center focus:outline-none focus:border-black" />
+                          <input required placeholder="CVV" maxLength={4} value={cardCvc} onChange={e => setCardCvc(e.target.value.replace(/\D/g, ''))}
+                            className="flex-1 border border-gray-200 rounded-xl px-3 py-2.5 text-sm text-center focus:outline-none focus:border-black" />
+                        </div>
+                        <p className="text-[10px] text-gray-400 text-center">بيانات البطاقة محمية بتشفير SSL عبر موياسر</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        <input required placeholder="رقم جوال STC Pay (05XXXXXXXX)" value={stcMobile} onChange={e => setStcMobile(e.target.value)}
+                          className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm text-right focus:outline-none focus:border-black" />
+                        <p className="text-[10px] text-gray-400 text-center">ستستلم رمز OTP على جوالك للتأكيد</p>
+                      </div>
+                    )}
                   </div>
                 );
               })()}
@@ -1105,10 +1163,11 @@ export default function ClientApp() {
               {!(showModal === 'add_booking' && (bookingStep === 'datetime' || bookingStep === 'select')) && (
                 <button
                   type="submit"
-                  className="w-full bg-black text-white py-5 rounded-3xl font-black mt-2"
+                  disabled={showModal === 'process_payment' && payLoading}
+                  className="w-full bg-black text-white py-5 rounded-3xl font-black mt-2 disabled:opacity-50"
                 >
                   {showModal === 'add_booking' ? 'تأكيد الحجز والدفع' :
-                   showModal === 'process_payment' ? 'ادفع الآن' :
+                   showModal === 'process_payment' ? (payLoading ? 'جارٍ المعالجة...' : `ادفع ${selectedItem?.totalPrice} ﷼`) :
                    showModal === 'confirm_service' ? 'نعم، أكّدي الاستلام' :
                    'إرسال التقييم'}
                 </button>

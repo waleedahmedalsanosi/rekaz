@@ -146,6 +146,19 @@ export const api = {
       request<ApiReview>('POST', '/reviews', { bookingId, rating, comment }),
   },
 
+  // ─── Payments (Moyasar) ─────────────────────────────────────────────────
+  payments: {
+    /**
+     * Create a Moyasar payment for a booking.
+     * Returns { redirect_url } if 3DS is required — redirect window.location there.
+     * Returns { success: true } if paid immediately (no 3DS, sandbox edge case).
+     */
+    create: (bookingId: string, source: MoyasarSource) =>
+      request<{ redirect_url?: string; success?: boolean; payment_id: string }>(
+        'POST', '/payments/create', { bookingId, source }
+      ),
+  },
+
   // ─── Admin ──────────────────────────────────────────────────────────────
   admin: {
     stats: () => request<ApiAdminStats>('GET', '/admin/stats'),
@@ -161,6 +174,11 @@ export const api = {
     revenue: () => request<{ date: string; commission: number; revenue: number }[]>('GET', '/admin/revenue'),
   },
 };
+
+// ─── Moyasar source types ─────────────────────────────────────────────────
+export type MoyasarSource =
+  | { type: 'creditcard'; name: string; number: string; month: string; year: string; cvc: string }
+  | { type: 'stcpay'; mobile: string };
 
 // ─── API Types ────────────────────────────────────────────────────────────
 export interface ApiUser {

@@ -182,6 +182,7 @@ export async function initDB() {
 
   // Additive migrations — safe to re-run; errors mean column already exists
   try { await client.execute('ALTER TABLE providers ADD COLUMN working_hours TEXT DEFAULT NULL'); } catch { /* exists */ }
+  try { await client.execute('ALTER TABLE bookings ADD COLUMN moyasar_payment_id TEXT DEFAULT NULL'); } catch { /* exists */ }
 
   await seedData();
 }

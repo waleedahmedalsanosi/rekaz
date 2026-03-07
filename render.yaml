@@ -22,6 +22,31 @@ services:
       # Same value as DOTNET_API_URL. If not set, the Express proxy above is used.
       - key: VITE_DOTNET_API_URL
         sync: false
+      # Security
+      - key: ADMIN_PASSWORD
+        sync: false
+      - key: ALLOWED_ORIGIN
+        sync: false
+      # Moyasar payment gateway (sandbox → live when ready)
+      - key: MOYASAR_SECRET_KEY
+        sync: false
+      - key: MOYASAR_PUBLISHABLE_KEY
+        sync: false
+      - key: MOYASAR_WEBHOOK_SECRET
+        sync: false
+      # OTPless WhatsApp OTP
+      - key: OTPLESS_CLIENT_ID
+        sync: false
+      - key: OTPLESS_CLIENT_SECRET
+        sync: false
+      # Sentry error tracking (server DSN)
+      - key: SENTRY_DSN
+        sync: false
+      # PostHog + Sentry frontend (baked into React bundle at build time)
+      - key: VITE_SENTRY_DSN
+        sync: false
+      - key: VITE_POSTHOG_KEY
+        sync: false
 
   # ── .NET 10 Clean Architecture backend ────────────────────────────────────
   - type: web
