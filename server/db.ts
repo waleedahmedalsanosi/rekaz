@@ -167,6 +167,19 @@ export async function initDB() {
     await client.execute(sql);
   }
 
+  // Indexes — safe to re-run (CREATE INDEX IF NOT EXISTS)
+  const indexes = [
+    'CREATE INDEX IF NOT EXISTS idx_bookings_provider ON bookings(provider_id)',
+    'CREATE INDEX IF NOT EXISTS idx_bookings_customer ON bookings(customer_id)',
+    'CREATE INDEX IF NOT EXISTS idx_bookings_date ON bookings(date)',
+    'CREATE INDEX IF NOT EXISTS idx_sessions_expires ON sessions(expires_at)',
+    'CREATE INDEX IF NOT EXISTS idx_messages_conv ON messages(conversation_id)',
+    'CREATE INDEX IF NOT EXISTS idx_transactions_wallet ON transactions(wallet_id)',
+  ];
+  for (const sql of indexes) {
+    await client.execute(sql);
+  }
+
   // Additive migrations — safe to re-run; errors mean column already exists
   try { await client.execute('ALTER TABLE providers ADD COLUMN working_hours TEXT DEFAULT NULL'); } catch { /* exists */ }
 

@@ -17,12 +17,42 @@ const app = express();
 const PORT = process.env.PORT || 3001;
 const isProd = process.env.NODE_ENV === 'production';
 
+// ─── In-memory rate limiter for auth endpoints ──────────────────────────────
+const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
+function rateLimit(windowMs: number, maxRequests: number) {
+  return (req: express.Request, res: express.Response, next: express.NextFunction) => {
+    const key = req.ip || 'unknown';
+    const now = Date.now();
+    const entry = rateLimitMap.get(key);
+    if (!entry || now > entry.resetAt) {
+      rateLimitMap.set(key, { count: 1, resetAt: now + windowMs });
+      return next();
+    }
+    entry.count++;
+    if (entry.count > maxRequests) {
+      return res.status(429).json({ error: 'طلبات كثيرة، حاول لاحقاً' });
+    }
+    next();
+  };
+}
+// Clean up stale entries every 5 minutes
+setInterval(() => {
+  const now = Date.now();
+  for (const [k, v] of rateLimitMap) if (now > v.resetAt) rateLimitMap.delete(k);
+}, 5 * 60 * 1000);
+
 // ─── Middleware ────────────────────────────────────────────────────────────
 app.use(express.json());
 
-// CORS
+// CORS — in production only allow from the configured allowed origin
+const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN;
 app.use((req, res, next) => {
-  const origin = isProd ? req.headers.origin || '*' : 'http://localhost:3000';
+  let origin: string;
+  if (isProd) {
+    origin = ALLOWED_ORIGIN || req.headers.origin || '';
+  } else {
+    origin = 'http://localhost:3000';
+  }
   res.header('Access-Control-Allow-Origin', origin);
   res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
   res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
@@ -41,7 +71,8 @@ initDB().then(() => {
 });
 
 // ─── Routes ───────────────────────────────────────────────────────────────
-app.use('/api/auth', authRouter);
+// Auth: 10 requests per minute per IP
+app.use('/api/auth', rateLimit(60_000, 10), authRouter);
 app.use('/api/providers', providersRouter);
 app.use('/api/services', servicesRouter);
 app.use('/api/bookings', bookingsRouter);

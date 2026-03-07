@@ -27,7 +27,10 @@ router.post('/send-otp', async (req, res) => {
     if (!phone || phone.length < 9) {
       return res.status(400).json({ error: 'رقم الجوال غير صحيح' });
     }
-    const code = '1234'; // Demo: always 1234
+    const code = Math.floor(1000 + Math.random() * 9000).toString();
+    if (process.env.NODE_ENV !== 'production') {
+      console.log(`[OTP] Phone: ${phone} → Code: ${code}`);
+    }
     const expiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString();
     await db.prepare('INSERT OR REPLACE INTO otp_codes (phone, code, expires_at) VALUES (?,?,?)').run(phone, code, expiresAt);
     res.json({ success: true, message: 'تم إرسال رمز التحقق' });
@@ -99,7 +102,8 @@ router.post('/verify-otp', async (req, res) => {
 router.post('/admin-login', async (req, res) => {
   try {
     const { password } = req.body;
-    if (password !== 'admin') {
+    const adminPw = process.env.ADMIN_PASSWORD || 'admin';
+    if (password !== adminPw) {
       return res.status(401).json({ error: 'كلمة المرور غير صحيحة' });
     }
     const admin = await db.prepare(`SELECT * FROM users WHERE role = 'ADMIN' LIMIT 1`).get() as any;

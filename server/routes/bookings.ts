@@ -38,7 +38,8 @@ const bookingQuery = `
     s.name as service_name
   FROM bookings b
   JOIN users u_c ON u_c.id = b.customer_id
-  JOIN users u_p ON u_p.id = (SELECT user_id FROM providers WHERE id = b.provider_id)
+  JOIN providers pr ON pr.id = b.provider_id
+  JOIN users u_p ON u_p.id = pr.user_id
   JOIN services s ON s.id = b.service_id
 `;
 
@@ -107,7 +108,7 @@ router.patch('/:id/status', requireAuth, async (req: AuthRequest, res) => {
         const providerEarnings = booking.service_price;
         await db.prepare(
           'UPDATE wallets SET balance = balance + ?, pending_balance = MAX(0, pending_balance - ?) WHERE provider_id = ?'
-        ).run(providerEarnings, booking.total_price, booking.provider_id);
+        ).run(providerEarnings, booking.service_price, booking.provider_id);
       }
     }
 
@@ -131,7 +132,7 @@ router.patch('/:id/pay', requireAuth, async (req: AuthRequest, res) => {
     if (wallet) {
       const txId = randomUUID();
       await db.prepare('UPDATE wallets SET pending_balance = pending_balance + ?, total_earned = total_earned + ? WHERE provider_id = ?')
-        .run(booking.total_price, booking.service_price, booking.provider_id);
+        .run(booking.service_price, booking.service_price, booking.provider_id);
       await db.prepare('INSERT INTO transactions (id,wallet_id,booking_id,type,amount,description) VALUES (?,?,?,?,?,?)')
         .run(txId, wallet.id, booking.id, 'CREDIT', booking.service_price, `حجز #${booking.id.slice(0,8)} - دفعة عميلة`);
     }
