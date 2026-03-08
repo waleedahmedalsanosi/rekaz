@@ -27,6 +27,8 @@ export default function AdminApp() {
   const [resolutionInput, setResolutionInput] = useState('');
   const [selectedDispute, setSelectedDispute] = useState<ApiDispute | null>(null);
   const [loading, setLoading] = useState(true);
+  const [providerSearch, setProviderSearch] = useState('');
+  const [selectedProvider, setSelectedProvider] = useState<ApiProvider | null>(null);
 
   useEffect(() => {
     loadAll();
@@ -61,7 +63,8 @@ export default function AdminApp() {
     { id: 'dashboard', label: 'لوحة التحكم', icon: TrendingUp },
     { id: 'bookings_admin', label: 'الحجوزات', icon: Calendar },
     { id: 'providers', label: 'المتخصصات', icon: Users },
-    { id: 'transactions', label: 'المعاملات', icon: CreditCard },
+    { id: 'disputes', label: 'النزاعات', icon: AlertCircle },
+    { id: 'payouts', label: 'السحوبات', icon: Wallet },
   ];
 
   const toggleVerification = async (providerId: string) => {
@@ -226,16 +229,70 @@ export default function AdminApp() {
     </div>
   );
 
-  // ─── Providers List ───────────────────────────────────────────────────────
-  const renderProviders = () => (
-    <div className="pb-28">
-      <div className="text-right mb-5 pt-2">
-        <h1 className="text-3xl font-black text-[#1C1410]">المتخصصات</h1>
-        <p className="text-sm text-[#8B7355] mt-0.5">{providers.length} متخصصة مسجلة</p>
+  // ─── Real Bookings View ──────────────────────────────────────────────────
+  const renderBookings = () => {
+    // Mock bookings data - in real app would come from API
+    const allBookings = [
+      { id: 'b1', clientName: 'فاطمة', providerName: 'ليلى أحمد', service: 'مكياج سهرة', date: '2026-03-10', time: '5:00 PM', price: 250, status: 'COMPLETED' },
+      { id: 'b2', clientName: 'نورا', providerName: 'ريم محمد', service: 'تصفيف شعر', date: '2026-03-09', time: '3:00 PM', price: 150, status: 'CONFIRMED' },
+      { id: 'b3', clientName: 'سارة', providerName: 'ليلى أحمد', service: 'عناية بشرة', date: '2026-03-11', time: '4:30 PM', price: 180, status: 'PENDING' },
+      { id: 'b4', clientName: 'هند', providerName: 'منال', service: 'مكياج يومي', date: '2026-03-08', time: '2:00 PM', price: 100, status: 'COMPLETED' },
+    ];
+    const statusColors: Record<string, string> = {
+      COMPLETED: 'bg-green-50 text-green-700',
+      CONFIRMED: 'bg-blue-50 text-blue-700',
+      PENDING: 'bg-yellow-50 text-yellow-700',
+      CANCELLED: 'bg-red-50 text-red-700',
+    };
+    return (
+      <div className="pb-28">
+        <div className="text-right mb-5 pt-2">
+          <h1 className="text-3xl font-black text-[#1C1410]">الحجوزات</h1>
+          <p className="text-sm text-[#8B7355] mt-0.5">{allBookings.length} حجز</p>
+        </div>
+        <div className="space-y-3">
+          {allBookings.map((booking) => (
+            <div key={booking.id} className="bg-white rounded-3xl border border-[#EDE8E2] p-4 shadow-sm">
+              <div className="flex items-start justify-between mb-3">
+                <div>
+                  <h4 className="font-black text-sm text-[#1C1410]">{booking.service}</h4>
+                  <p className="text-xs text-[#8B7355] mt-1">{booking.clientName} ← {booking.providerName}</p>
+                </div>
+                <span className={`text-[10px] font-black px-2.5 py-1 rounded-full ${statusColors[booking.status] || 'bg-gray-50 text-gray-700'}`}>
+                  {booking.status === 'COMPLETED' ? 'مكتمل' : booking.status === 'CONFIRMED' ? 'مؤكد' : booking.status === 'PENDING' ? 'معلق' : 'ملغي'}
+                </span>
+              </div>
+              <div className="flex items-center justify-between text-xs text-[#8B7355]">
+                <span>{booking.date} · {booking.time}</span>
+                <span className="font-black text-[#1C1410]">{booking.price} ريال</span>
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
+    );
+  };
+
+  // ─── Providers List ───────────────────────────────────────────────────────
+  const renderProviders = () => {
+    const filteredProviders = providers.filter(p =>
+      p.name.includes(providerSearch) || p.specialty.includes(providerSearch)
+    );
+    return selectedProvider ? renderProviderDetails() : (
+    <div className="pb-28">
+      <div className="text-right mb-4 pt-2">
+        <h1 className="text-3xl font-black text-[#1C1410]">المتخصصات</h1>
+        <p className="text-sm text-[#8B7355] mt-0.5">{filteredProviders.length} من {providers.length} متخصصة</p>
+      </div>
+      <input
+        value={providerSearch}
+        onChange={e => setProviderSearch(e.target.value)}
+        placeholder="ابحثي باسم أو تخصص..."
+        className="w-full bg-white border border-[#EDE8E2] rounded-2xl px-4 py-3.5 text-sm text-right focus:outline-none focus:ring-2 focus:ring-[#C9956A] shadow-sm mb-4"
+      />
       <div className="space-y-3">
-        {providers.map((provider) => (
-          <div key={provider.id} className="bg-white rounded-3xl border border-[#EDE8E2] p-4 shadow-sm">
+        {filteredProviders.map((provider) => (
+          <button key={provider.id} onClick={() => setSelectedProvider(provider)} className="w-full text-right bg-white rounded-3xl border border-[#EDE8E2] p-4 shadow-sm hover:bg-[#FAF7F4] transition-colors active:scale-[0.98]">
             <div className="flex items-center gap-3 mb-3">
               <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-[#C4A882] to-[#A07850] flex items-center justify-center text-white font-black text-lg shrink-0">
                 {provider.name[0]}
@@ -257,7 +314,7 @@ export default function AdminApp() {
             </div>
             <div className="flex gap-2">
               <button
-                onClick={() => toggleVerification(provider.id)}
+                onClick={(e) => { e.stopPropagation(); toggleVerification(provider.id); }}
                 className={`flex-1 py-2.5 rounded-2xl text-sm font-black transition-all ${
                   provider.isVerified
                     ? 'bg-[#FAF7F4] text-[#8B7355] border border-[#EDE8E2]'
@@ -266,15 +323,89 @@ export default function AdminApp() {
               >
                 {provider.isVerified ? 'إلغاء التوثيق' : 'توثيق'}
               </button>
-              <button className="flex-1 py-2.5 bg-[#FAF7F4] text-[#8B7355] rounded-2xl text-sm font-bold border border-[#EDE8E2]">
+              <button onClick={(e) => e.stopPropagation()} className="flex-1 py-2.5 bg-[#FAF7F4] text-[#8B7355] rounded-2xl text-sm font-bold border border-[#EDE8E2]">
                 رفض
               </button>
             </div>
-          </div>
+          </button>
         ))}
       </div>
     </div>
-  );
+    );
+  };
+
+  // ─── Provider Details Page ────────────────────────────────────────────────
+  const renderProviderDetails = () => {
+    if (!selectedProvider) return null;
+    return (
+      <div className="space-y-6 pb-24">
+        <div className="flex items-center gap-4">
+          <button onClick={() => setSelectedProvider(null)} className="p-2 bg-white rounded-xl shadow-sm">
+            <ArrowLeft size={20} />
+          </button>
+          <h2 className="text-2xl font-black">{selectedProvider.name}</h2>
+        </div>
+
+        {/* Provider Info Card */}
+        <div className="bg-white rounded-3xl border border-[#EDE8E2] p-6 shadow-sm">
+          <div className="flex items-start gap-4 mb-4">
+            <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-[#C4A882] to-[#A07850] flex items-center justify-center text-white font-black text-2xl shrink-0">
+              {selectedProvider.name[0]}
+            </div>
+            <div className="flex-1 text-right">
+              <div className="flex items-center justify-end gap-2 mb-1">
+                <h3 className="text-lg font-black text-[#1C1410]">{selectedProvider.name}</h3>
+                {selectedProvider.isVerified && <ShieldCheck size={18} className="text-green-600" />}
+              </div>
+              <p className="text-sm text-[#8B7355] mb-1">{selectedProvider.specialty}</p>
+              <p className="text-xs text-[#8B7355]">⭐ {selectedProvider.rating} ({selectedProvider.reviewCount} تقييم)</p>
+            </div>
+          </div>
+          <div className="text-right space-y-2 text-sm">
+            <p><span className="font-bold text-[#1C1410]">المدينة:</span> <span className="text-[#8B7355]">{selectedProvider.city}</span></p>
+            <p><span className="font-bold text-[#1C1410]">الهاتف:</span> <span className="text-[#8B7355] dir-ltr">{selectedProvider.phone}</span></p>
+            <p><span className="font-bold text-[#1C1410]">الحالة:</span> <span className={selectedProvider.isVerified ? 'text-green-600 font-bold' : 'text-yellow-600 font-bold'}>{selectedProvider.isVerified ? 'موثّقة ✓' : 'قيد المراجعة'}</span></p>
+          </div>
+        </div>
+
+        {/* Bio */}
+        {selectedProvider.bio && (
+          <div className="bg-white rounded-3xl border border-[#EDE8E2] p-4 shadow-sm">
+            <p className="text-xs font-bold text-[#8B7355] mb-2">السيرة الذاتية</p>
+            <p className="text-sm text-[#1C1410] leading-relaxed">{selectedProvider.bio}</p>
+          </div>
+        )}
+
+        {/* Neighborhoods */}
+        {selectedProvider.coveredNeighborhoods && selectedProvider.coveredNeighborhoods.length > 0 && (
+          <div className="bg-white rounded-3xl border border-[#EDE8E2] p-4 shadow-sm">
+            <p className="text-xs font-bold text-[#8B7355] mb-3">المناطق المغطاة</p>
+            <div className="flex flex-wrap gap-2 justify-end">
+              {selectedProvider.coveredNeighborhoods.map(n => (
+                <span key={n} className="bg-[#FAF7F4] text-[#C9956A] text-xs font-bold px-3 py-1.5 rounded-full">
+                  {n}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Actions */}
+        <div className="flex gap-3">
+          <button
+            onClick={() => { toggleVerification(selectedProvider.id); setSelectedProvider(null); }}
+            className={`flex-1 py-3.5 rounded-2xl text-sm font-black transition-all ${
+              selectedProvider.isVerified
+                ? 'bg-[#FAF7F4] text-[#8B7355] border border-[#EDE8E2]'
+                : 'bg-[#1C1410] text-white'
+            }`}
+          >
+            {selectedProvider.isVerified ? 'إلغاء التوثيق' : '✓ توثيق'}
+          </button>
+        </div>
+      </div>
+    );
+  };
 
   // ─── Disputes ─────────────────────────────────────────────────────────────
   const renderDisputes = () => (
@@ -519,8 +650,6 @@ export default function AdminApp() {
   const renderSettings = () => {
     const settingsItems = [
       { id: 'billing', label: 'إدارة الباقات', icon: CreditCard },
-      { id: 'disputes', label: 'النزاعات', icon: AlertCircle, badge: openDisputesCount },
-      { id: 'payouts', label: 'طلبات السحب', icon: Wallet, badge: pendingPayoutsCount },
       { id: 'reports', label: 'تقارير المنصة', icon: PieChart },
     ];
 
@@ -578,14 +707,13 @@ export default function AdminApp() {
           >
             {subView === 'billing' && renderSubscriptions()}
             {subView === 'reports' && renderReports()}
-            {subView === 'disputes' && renderDisputes()}
-            {subView === 'payouts' && renderPayouts()}
             {!subView && (
               <>
                 {activeTab === 'dashboard' && renderDashboard()}
                 {activeTab === 'providers' && renderProviders()}
-                {activeTab === 'bookings_admin' && renderDisputes()}
-                {activeTab === 'transactions' && renderPayouts()}
+                {activeTab === 'bookings_admin' && renderBookings()}
+                {activeTab === 'disputes' && renderDisputes()}
+                {activeTab === 'payouts' && renderPayouts()}
                 {activeTab === 'settings' && renderSettings()}
               </>
             )}
@@ -597,7 +725,7 @@ export default function AdminApp() {
         {bottomNavItems.map((item) => (
           <button
             key={item.id}
-            onClick={() => { setActiveTab(item.id); setSubView(null); }}
+            onClick={() => { setActiveTab(item.id); setSubView(null); setSelectedProvider(null); setProviderSearch(''); }}
             className="relative flex flex-col items-center gap-1"
           >
             <item.icon
@@ -605,9 +733,14 @@ export default function AdminApp() {
               strokeWidth={activeTab === item.id && !subView ? 2.5 : 1.8}
               className={activeTab === item.id && !subView ? 'text-[#C9956A]' : 'text-[#8B7355]'}
             />
-            {item.id === 'settings' && (openDisputesCount + pendingPayoutsCount) > 0 && (
+            {item.id === 'disputes' && openDisputesCount > 0 && (
               <div className="absolute -top-0.5 right-0.5 w-4 h-4 bg-red-500 rounded-full text-white text-[9px] font-black flex items-center justify-center">
-                {openDisputesCount + pendingPayoutsCount}
+                {openDisputesCount}
+              </div>
+            )}
+            {item.id === 'payouts' && pendingPayoutsCount > 0 && (
+              <div className="absolute -top-0.5 right-0.5 w-4 h-4 bg-red-500 rounded-full text-white text-[9px] font-black flex items-center justify-center">
+                {pendingPayoutsCount}
               </div>
             )}
             <span className={`text-[10px] font-bold ${activeTab === item.id && !subView ? 'text-[#C9956A]' : 'text-[#8B7355]'}`}>
