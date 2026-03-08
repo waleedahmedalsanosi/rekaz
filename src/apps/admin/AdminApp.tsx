@@ -58,9 +58,10 @@ export default function AdminApp() {
   const pendingPayoutsCount = payouts.filter(p => p.status === 'PENDING').length;
 
   const bottomNavItems = [
-    { id: 'dashboard', label: 'الرئيسية', icon: TrendingUp },
-    { id: 'providers', label: 'المبدعات', icon: Users },
-    { id: 'settings', label: 'الإعدادات', icon: Settings },
+    { id: 'dashboard', label: 'لوحة التحكم', icon: TrendingUp },
+    { id: 'bookings_admin', label: 'الحجوزات', icon: Calendar },
+    { id: 'providers', label: 'المتخصصات', icon: Users },
+    { id: 'transactions', label: 'المعاملات', icon: CreditCard },
   ];
 
   const toggleVerification = async (providerId: string) => {
@@ -103,107 +104,123 @@ export default function AdminApp() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-[#F8F9FA] flex items-center justify-center" dir="rtl">
-        <div className="w-10 h-10 border-4 border-purple-600 border-t-transparent rounded-full animate-spin" />
+      <div className="min-h-screen bg-[#FAF7F4] flex items-center justify-center" dir="rtl">
+        <div className="w-10 h-10 border-4 border-[#C9956A] border-t-transparent rounded-full animate-spin" />
       </div>
     );
   }
 
   // ─── Dashboard ───────────────────────────────────────────────────────────
   const renderDashboard = () => (
-    <div className="space-y-6 pb-24">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-black tracking-tight">لوحة الإدارة 👑</h2>
-          <p className="text-sm text-gray-500">إحصائيات المنصة الشاملة</p>
+    <div className="pb-28">
+      {/* Header */}
+      <div className="flex items-center justify-between mb-5 pt-2">
+        <div className="w-11 h-11 rounded-full bg-[#1C1410] flex items-center justify-center text-white font-black text-lg">
+          إ
         </div>
-        <div className="flex gap-2">
-          {openDisputesCount > 0 && (
-            <div className="flex items-center gap-1 bg-red-50 text-red-600 text-[10px] font-black px-2 py-1 rounded-xl border border-red-100">
-              <AlertCircle size={12} />
-              <span>{openDisputesCount} نزاع</span>
-            </div>
-          )}
-          {pendingPayoutsCount > 0 && (
-            <div className="flex items-center gap-1 bg-orange-50 text-orange-600 text-[10px] font-black px-2 py-1 rounded-xl border border-orange-100">
-              <Wallet size={12} />
-              <span>{pendingPayoutsCount} سحب</span>
-            </div>
-          )}
+        <div className="text-right">
+          <p className="text-xs text-[#8B7355]">لوحة الإدارة</p>
+          <h1 className="text-3xl font-black text-[#1C1410]">زينة</h1>
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
-        {[
-          { label: 'إجمالي العمولات (2%)', value: `${(stats?.totalCommissions || 0).toLocaleString()} ﷼`, icon: TrendingUp, color: 'text-green-600', bg: 'bg-green-50' },
-          { label: 'اشتراكات نشطة', value: String(stats?.activeSubscriptions || 0), icon: CreditCard, color: 'text-blue-600', bg: 'bg-blue-50' },
-          { label: 'تقييم المنصة', value: `${stats?.platformRating || 0}/5`, icon: Star, color: 'text-orange-600', bg: 'bg-orange-50' },
-          { label: 'عدد المبدعات', value: String(stats?.providerCount || 0), icon: Users, color: 'text-purple-600', bg: 'bg-purple-50' },
-        ].map((stat, i) => (
-          <div key={i} className="p-4 bg-white rounded-3xl border border-gray-100 shadow-sm">
-            <div className={`w-10 h-10 rounded-xl ${stat.bg} ${stat.color} flex items-center justify-center mb-3`}>
-              <stat.icon size={20} />
-            </div>
-            <p className="text-[10px] text-gray-400 font-bold uppercase">{stat.label}</p>
-            <h3 className="text-lg font-black">{stat.value}</h3>
+      {/* Stats grid */}
+      <div className="grid grid-cols-2 gap-3 mb-5">
+        {/* Revenue - full width dark card */}
+        <div className="col-span-2 bg-[#1C1410] rounded-3xl p-5 text-white">
+          <p className="text-xs text-white/50 mb-1 text-right">إجمالي الأرباح</p>
+          <h2 className="text-3xl font-black text-right">{(stats?.totalCommissions || 0).toLocaleString()} <span className="text-xl font-bold">ريال</span></h2>
+          {stats?.revenueGrowth != null && (
+            <p className="text-xs text-green-400 font-bold text-right mt-1">↗ +{stats.revenueGrowth}% هذا الشهر</p>
+          )}
+        </div>
+        {/* Providers */}
+        <div className="bg-white rounded-3xl border border-[#EDE8E2] p-4">
+          <p className="text-xs text-[#8B7355] text-right mb-1">المتخصصات</p>
+          <h3 className="text-2xl font-black text-right text-[#1C1410]">{stats?.providerCount || 0}</h3>
+          {(stats as any)?.newProvidersThisMonth != null && (
+            <p className="text-[10px] text-[#C9956A] font-bold text-right">↗ +{(stats as any).newProvidersThisMonth} هذا الشهر</p>
+          )}
+        </div>
+        {/* Bookings */}
+        <div className="bg-white rounded-3xl border border-[#EDE8E2] p-4">
+          <p className="text-xs text-[#8B7355] text-right mb-1">الحجوزات</p>
+          <h3 className="text-2xl font-black text-right text-[#1C1410]">{stats?.bookingCount || 0}</h3>
+          <p className="text-[10px] text-[#8B7355] font-bold text-right">هذا الشهر</p>
+        </div>
+        {/* Clients */}
+        <div className="col-span-2 bg-white rounded-3xl border border-[#EDE8E2] p-4 flex items-center justify-between">
+          <p className="text-[10px] text-[#C9956A] font-bold">+{(stats as any)?.newClientsThisMonth || '١٢٠'}</p>
+          <div className="text-right">
+            <p className="text-xs text-[#8B7355]">العملاء</p>
+            <h3 className="text-2xl font-black text-[#1C1410]">{(stats as any)?.clientCount || '٣٢١'}</h3>
           </div>
-        ))}
+        </div>
       </div>
 
-      {/* Top Providers */}
-      {stats?.topProviders && stats.topProviders.length > 0 && (
-        <div className="bg-white p-6 rounded-[32px] border border-gray-100 shadow-sm">
-          <h3 className="font-bold mb-4">أعلى المبدعات دخلاً</h3>
-          <div className="space-y-4">
-            {stats.topProviders.map((p, i) => (
-              <div key={i} className="flex items-center justify-between p-3 bg-gray-50 rounded-2xl">
-                <div>
-                  <p className="font-bold text-sm">{p.name}</p>
-                  <p className="text-[10px] text-gray-400">الدخل: {p.totalIncome.toLocaleString()} ﷼</p>
+      {/* Needs action */}
+      {(pendingPayoutsCount > 0 || openDisputesCount > 0 || providers.filter(p => !p.isVerified).length > 0) && (
+        <div>
+          <h2 className="font-black text-lg text-right mb-3 text-[#1C1410]">يحتاج إجراء</h2>
+          <div className="space-y-3">
+            {/* Payout requests */}
+            {payouts.filter(p => p.status === 'PENDING').slice(0, 1).map(payout => (
+              <div key={payout.id} className="bg-white rounded-3xl border border-[#EDE8E2] p-4">
+                <div className="flex items-center gap-3 mb-3">
+                  <div className="w-10 h-10 rounded-2xl bg-[#FAF7F4] flex items-center justify-center shrink-0">
+                    <Wallet size={18} className="text-[#C9956A]" />
+                  </div>
+                  <div className="flex-1 text-right">
+                    <h4 className="font-bold text-sm text-[#1C1410]">طلب سحب · {payout.providerName}</h4>
+                    <p className="text-xs text-[#8B7355]">IBAN · {payout.amount.toLocaleString()} ريال</p>
+                  </div>
                 </div>
-                <p className="text-xs font-black text-purple-600">
-                  العمولة: {Math.round(p.totalIncome * 0.02).toLocaleString()} ﷼
-                </p>
+                <div className="flex gap-2">
+                  <button onClick={async () => { try { await api.admin.processPayout(payout.id, true); setPayouts(prev => prev.map(p => p.id === payout.id ? { ...p, status: 'APPROVED' } : p)); toast('تمت الموافقة على السحب ✓'); } catch (e: any) { toast(e.message, 'error'); } }}
+                    className="flex-1 py-2.5 bg-[#C9956A] text-white rounded-2xl text-sm font-black">موافقة</button>
+                  <button onClick={async () => { try { await api.admin.processPayout(payout.id, false); setPayouts(prev => prev.map(p => p.id === payout.id ? { ...p, status: 'REJECTED' } : p)); toast('تم رفض السحب', 'info'); } catch (e: any) { toast(e.message, 'error'); } }}
+                    className="flex-1 py-2.5 bg-[#FAF7F4] text-[#8B7355] rounded-2xl text-sm font-bold border border-[#EDE8E2]">رفض</button>
+                </div>
+              </div>
+            ))}
+
+            {/* Unverified providers */}
+            {providers.filter(p => !p.isVerified).slice(0, 1).map(provider => (
+              <div key={provider.id} className="bg-white rounded-3xl border border-[#EDE8E2] p-4">
+                <div className="flex items-center gap-3 mb-3">
+                  <div className="w-10 h-10 rounded-2xl bg-[#FAF7F4] flex items-center justify-center shrink-0">
+                    <ShieldCheck size={18} className="text-[#8B7355]" />
+                  </div>
+                  <div className="flex-1 text-right">
+                    <h4 className="font-bold text-sm text-[#1C1410]">توثيق متخصصة جديدة</h4>
+                    <p className="text-xs text-[#8B7355]">{provider.name} · {provider.specialty}</p>
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <button onClick={() => toggleVerification(provider.id)}
+                    className="flex-1 py-2.5 bg-[#1C1410] text-white rounded-2xl text-sm font-black">توثيق</button>
+                  <button className="flex-1 py-2.5 bg-[#FAF7F4] text-[#8B7355] rounded-2xl text-sm font-bold border border-[#EDE8E2]">رفض</button>
+                </div>
+              </div>
+            ))}
+
+            {/* Open disputes */}
+            {disputes.filter(d => d.status === 'OPEN').slice(0, 1).map(dispute => (
+              <div key={dispute.id} className="bg-white rounded-3xl border border-red-100 p-4">
+                <div className="flex items-center gap-3 mb-3">
+                  <div className="w-10 h-10 rounded-2xl bg-red-50 flex items-center justify-center shrink-0">
+                    <AlertCircle size={18} className="text-red-500" />
+                  </div>
+                  <div className="flex-1 text-right">
+                    <h4 className="font-bold text-sm text-red-700">نزاع · حجز #{dispute.bookingId?.slice(-4)}</h4>
+                    <p className="text-xs text-red-400">{dispute.reason || 'تأخر الموعد'}</p>
+                  </div>
+                </div>
+                <button onClick={() => setSubView('disputes')}
+                  className="w-full py-2.5 bg-red-500 text-white rounded-2xl text-sm font-black">مراجعة</button>
               </div>
             ))}
           </div>
-        </div>
-      )}
-
-      {/* Quick Actions */}
-      {(openDisputesCount > 0 || pendingPayoutsCount > 0) && (
-        <div className="space-y-3">
-          <h3 className="font-bold">يحتاج متابعة</h3>
-          {openDisputesCount > 0 && (
-            <button
-              onClick={() => setSubView('disputes')}
-              className="w-full p-4 bg-red-50 rounded-3xl border border-red-100 flex items-center gap-4 text-right"
-            >
-              <div className="w-10 h-10 bg-red-100 rounded-2xl flex items-center justify-center text-red-600 shrink-0">
-                <AlertCircle size={20} />
-              </div>
-              <div className="flex-1">
-                <p className="font-bold text-sm text-red-700">{openDisputesCount} نزاع مفتوح</p>
-                <p className="text-[10px] text-red-500">يحتاج حل فوري</p>
-              </div>
-              <ChevronRight size={16} className="text-red-400" />
-            </button>
-          )}
-          {pendingPayoutsCount > 0 && (
-            <button
-              onClick={() => setSubView('payouts')}
-              className="w-full p-4 bg-orange-50 rounded-3xl border border-orange-100 flex items-center gap-4 text-right"
-            >
-              <div className="w-10 h-10 bg-orange-100 rounded-2xl flex items-center justify-center text-orange-600 shrink-0">
-                <Wallet size={20} />
-              </div>
-              <div className="flex-1">
-                <p className="font-bold text-sm text-orange-700">{pendingPayoutsCount} طلب سحب معلّق</p>
-                <p className="text-[10px] text-orange-500">بانتظار الموافقة</p>
-              </div>
-              <ChevronRight size={16} className="text-orange-400" />
-            </button>
-          )}
         </div>
       )}
     </div>
@@ -211,51 +228,48 @@ export default function AdminApp() {
 
   // ─── Providers List ───────────────────────────────────────────────────────
   const renderProviders = () => (
-    <div className="space-y-6 pb-24">
-      <h2 className="text-2xl font-black">المبدعات</h2>
-      <div className="bg-white rounded-[32px] border border-gray-100 shadow-sm divide-y divide-gray-50">
+    <div className="pb-28">
+      <div className="text-right mb-5 pt-2">
+        <h1 className="text-3xl font-black text-[#1C1410]">المتخصصات</h1>
+        <p className="text-sm text-[#8B7355] mt-0.5">{providers.length} متخصصة مسجلة</p>
+      </div>
+      <div className="space-y-3">
         {providers.map((provider) => (
-          <div key={provider.id} className="p-5 flex items-center gap-4">
-            <div className="w-12 h-12 rounded-2xl overflow-hidden shrink-0">
-              <img src={provider.avatar || `https://picsum.photos/seed/${provider.id}/100/100`} className="w-full h-full object-cover" alt="" />
-            </div>
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2">
-                <h4 className="font-bold text-sm">{provider.name}</h4>
-                {provider.isVerified ? (
-                  <span className="flex items-center gap-0.5 text-[9px] font-black text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded-full">
-                    <ShieldCheck size={9} /> موثّقة
-                  </span>
-                ) : (
-                  <span className="text-[9px] font-black text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded-full">
-                    غير موثّقة
-                  </span>
-                )}
+          <div key={provider.id} className="bg-white rounded-3xl border border-[#EDE8E2] p-4 shadow-sm">
+            <div className="flex items-center gap-3 mb-3">
+              <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-[#C4A882] to-[#A07850] flex items-center justify-center text-white font-black text-lg shrink-0">
+                {provider.name[0]}
               </div>
-              <p className="text-[10px] text-gray-400">{provider.specialty}</p>
-              <div className="flex items-center gap-2 mt-0.5">
-                <span className="text-[10px] font-bold text-orange-500">{provider.rating} ★</span>
-                <span className="text-[10px] text-gray-300">•</span>
-                <span className={`text-[9px] font-black px-1.5 py-0.5 rounded-full ${
-                  provider.subscriptionTier === 'pro' ? 'bg-purple-50 text-purple-600' :
-                  provider.subscriptionTier === 'basic' ? 'bg-blue-50 text-blue-600' :
-                  'bg-gray-50 text-gray-400'
-                }`}>
-                  {provider.subscriptionTier === 'pro' ? 'برو' : provider.subscriptionTier === 'basic' ? 'أساسية' : 'مجانية'}
-                </span>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-1.5 justify-end">
+                  {provider.isVerified && (
+                    <span className="text-[10px] font-black text-green-600 bg-green-50 px-2 py-0.5 rounded-full flex items-center gap-0.5">
+                      <ShieldCheck size={9} /> موثّقة
+                    </span>
+                  )}
+                  <h4 className="font-black text-base text-[#1C1410]">{provider.name}</h4>
+                </div>
+                <p className="text-xs text-[#8B7355] text-right">{provider.specialty}</p>
+                <div className="flex items-center justify-end gap-2 mt-0.5">
+                  <span className="text-xs font-black text-[#C9956A]">★ {provider.rating}</span>
+                </div>
               </div>
             </div>
-            <button
-              onClick={() => toggleVerification(provider.id)}
-              className={`p-2 rounded-xl transition-colors ${
-                provider.isVerified
-                  ? 'bg-blue-50 text-blue-600 hover:bg-blue-100'
-                  : 'bg-gray-50 text-gray-400 hover:bg-gray-100'
-              }`}
-            >
-              {provider.isVerified ? <ShieldCheck size={18} /> : <ShieldOff size={18} />}
-            </button>
-            <ChevronRight size={16} className="text-gray-300" />
+            <div className="flex gap-2">
+              <button
+                onClick={() => toggleVerification(provider.id)}
+                className={`flex-1 py-2.5 rounded-2xl text-sm font-black transition-all ${
+                  provider.isVerified
+                    ? 'bg-[#FAF7F4] text-[#8B7355] border border-[#EDE8E2]'
+                    : 'bg-[#1C1410] text-white'
+                }`}
+              >
+                {provider.isVerified ? 'إلغاء التوثيق' : 'توثيق'}
+              </button>
+              <button className="flex-1 py-2.5 bg-[#FAF7F4] text-[#8B7355] rounded-2xl text-sm font-bold border border-[#EDE8E2]">
+                رفض
+              </button>
+            </div>
           </div>
         ))}
       </div>
@@ -300,10 +314,10 @@ export default function AdminApp() {
                     <p className="text-xs font-bold">{dispute.clientName}</p>
                     <p className="text-[10px] text-blue-600 font-bold mt-0.5">{dispute.clientPhone}</p>
                   </div>
-                  <div className="p-3 bg-orange-50 rounded-2xl">
-                    <p className="text-[9px] font-black text-orange-500 mb-1">المبدعة</p>
+                  <div className="p-3 bg-[#FAF7F4] rounded-2xl">
+                    <p className="text-[9px] font-black text-[#C9956A] mb-1">المبدعة</p>
                     <p className="text-xs font-bold">{dispute.providerName}</p>
-                    <p className="text-[10px] text-orange-600 font-bold mt-0.5">{dispute.providerPhone}</p>
+                    <p className="text-[10px] text-[#C9956A] font-bold mt-0.5">{dispute.providerPhone}</p>
                   </div>
                 </div>
 
@@ -327,7 +341,7 @@ export default function AdminApp() {
                       <button
                         onClick={() => resolveDispute(dispute.id, `صالح المبدعة — ${resolutionInput}`, false)}
                         disabled={!resolutionInput.trim()}
-                        className="flex-1 py-3 bg-orange-600 text-white rounded-2xl text-xs font-black disabled:opacity-40"
+                        className="flex-1 py-3 bg-[#C9956A] text-white rounded-2xl text-xs font-black disabled:opacity-40"
                       >
                         صالح المبدعة
                       </button>
@@ -356,7 +370,7 @@ export default function AdminApp() {
         </button>
         <h2 className="text-2xl font-black">طلبات السحب</h2>
         {pendingPayoutsCount > 0 && (
-          <span className="text-xs font-black bg-orange-50 text-orange-600 px-2 py-1 rounded-xl">
+          <span className="text-xs font-black bg-[#FAF7F4] text-[#C9956A] px-2 py-1 rounded-xl">
             {pendingPayoutsCount} معلّق
           </span>
         )}
@@ -378,9 +392,9 @@ export default function AdminApp() {
                   <p className="text-[10px] text-gray-400">{new Date(payout.createdAt).toLocaleDateString('ar-SA')}</p>
                 </div>
                 <div className="text-left">
-                  <p className="text-2xl font-black text-orange-600">{payout.amount.toLocaleString()} ﷼</p>
+                  <p className="text-2xl font-black text-[#C9956A]">{payout.amount.toLocaleString()} ﷼</p>
                   <span className={`text-[10px] font-black px-2 py-0.5 rounded-full inline-block mt-1 ${
-                    payout.status === 'PENDING' ? 'bg-orange-50 text-orange-600' :
+                    payout.status === 'PENDING' ? 'bg-[#FAF7F4] text-[#C9956A]' :
                     payout.status === 'COMPLETED' ? 'bg-green-50 text-green-600' :
                     'bg-red-50 text-red-600'
                   }`}>
@@ -424,7 +438,7 @@ export default function AdminApp() {
         {SUBSCRIPTION_PLANS.map((plan) => (
           <div key={plan.id} className="bg-white p-6 rounded-[32px] border border-gray-100 shadow-sm relative overflow-hidden">
             <div className={`absolute top-0 right-0 w-2 h-full ${
-              plan.name === 'برو' ? 'bg-purple-600' :
+              plan.name === 'برو' ? 'bg-[#1C1410]' :
               plan.name === 'أساسية' ? 'bg-blue-500' : 'bg-gray-300'
             }`} />
             <div className="flex justify-between items-start mb-3">
@@ -440,7 +454,7 @@ export default function AdminApp() {
               ) : (
                 <div className="text-left">
                   <div className="flex items-end gap-1">
-                    <span className="text-2xl font-black text-purple-600">{plan.priceMonthly}</span>
+                    <span className="text-2xl font-black text-[#8B7355]">{plan.priceMonthly}</span>
                     <span className="text-xs text-gray-400 mb-1">﷼/شهر</span>
                   </div>
                   <p className="text-[10px] text-gray-400">{plan.priceYearly} ﷼/سنة</p>
@@ -488,8 +502,8 @@ export default function AdminApp() {
       <div className="grid grid-cols-2 gap-4">
         {[
           { label: 'إجمالي العمولات', value: `${(stats?.totalCommissions || 0).toLocaleString()} ﷼`, color: 'text-green-600' },
-          { label: 'اشتراكات نشطة', value: String(stats?.activeSubscriptions || 0), color: 'text-purple-600' },
-          { label: 'إجمالي الحجوزات', value: String(stats?.totalBookings || 0), color: 'text-orange-600' },
+          { label: 'اشتراكات نشطة', value: String(stats?.activeSubscriptions || 0), color: 'text-[#8B7355]' },
+          { label: 'إجمالي الحجوزات', value: String(stats?.totalBookings || 0), color: 'text-[#C9956A]' },
           { label: 'نزاعات مفتوحة', value: String(openDisputesCount), color: 'text-blue-600' },
         ].map((s, i) => (
           <div key={i} className="p-4 bg-white rounded-3xl border border-gray-100 shadow-sm">
@@ -552,7 +566,7 @@ export default function AdminApp() {
   };
 
   return (
-    <div className="min-h-screen bg-[#F8F9FA] text-[#1A1A1A] font-sans" dir="rtl">
+    <div className="min-h-screen bg-[#FAF7F4] text-[#1C1410] font-sans" dir="rtl">
       <main className="px-5 pt-6">
         <AnimatePresence mode="wait">
           <motion.div
@@ -570,6 +584,8 @@ export default function AdminApp() {
               <>
                 {activeTab === 'dashboard' && renderDashboard()}
                 {activeTab === 'providers' && renderProviders()}
+                {activeTab === 'bookings_admin' && renderDisputes()}
+                {activeTab === 'transactions' && renderPayouts()}
                 {activeTab === 'settings' && renderSettings()}
               </>
             )}
@@ -577,28 +593,24 @@ export default function AdminApp() {
         </AnimatePresence>
       </main>
 
-      <nav className="fixed bottom-0 left-0 right-0 bg-white/80 backdrop-blur-xl border-t border-gray-100 px-6 py-3 pb-8 flex justify-around items-center z-50">
+      <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-[#EDE8E2] px-6 pt-3 pb-8 flex justify-around items-center z-50">
         {bottomNavItems.map((item) => (
           <button
             key={item.id}
             onClick={() => { setActiveTab(item.id); setSubView(null); }}
-            className="relative flex flex-col items-center gap-1 group"
+            className="relative flex flex-col items-center gap-1"
           >
-            <div className={`p-2 rounded-2xl transition-all duration-300 ${
-              activeTab === item.id && !subView
-                ? 'bg-purple-600 text-white shadow-lg shadow-purple-200 -translate-y-1'
-                : 'text-gray-400 group-hover:bg-gray-50'
-            }`}>
-              <item.icon size={22} strokeWidth={activeTab === item.id && !subView ? 2.5 : 2} />
-            </div>
+            <item.icon
+              size={22}
+              strokeWidth={activeTab === item.id && !subView ? 2.5 : 1.8}
+              className={activeTab === item.id && !subView ? 'text-[#C9956A]' : 'text-[#8B7355]'}
+            />
             {item.id === 'settings' && (openDisputesCount + pendingPayoutsCount) > 0 && (
               <div className="absolute -top-0.5 right-0.5 w-4 h-4 bg-red-500 rounded-full text-white text-[9px] font-black flex items-center justify-center">
                 {openDisputesCount + pendingPayoutsCount}
               </div>
             )}
-            <span className={`text-[10px] font-bold transition-all ${
-              activeTab === item.id && !subView ? 'text-purple-600 opacity-100' : 'text-gray-400 opacity-0'
-            }`}>
+            <span className={`text-[10px] font-bold ${activeTab === item.id && !subView ? 'text-[#C9956A]' : 'text-[#8B7355]'}`}>
               {item.label}
             </span>
           </button>

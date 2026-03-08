@@ -56,6 +56,8 @@ export const api = {
     adminLogin: (password: string) =>
       request<{ token: string; user: ApiUser }>('POST', '/auth/admin-login', { password }),
     logout: () => request<{ success: boolean }>('POST', '/auth/logout'),
+    updateMe: (data: { name?: string; phone?: string }) =>
+      request<ApiUser>('PATCH', '/auth/me', data),
   },
 
   // ─── Providers ──────────────────────────────────────────────────────────
@@ -115,6 +117,10 @@ export const api = {
       request<ApiBooking>('PATCH', `/bookings/${id}/pay`),
     confirm: (id: string) =>
       request<ApiBooking>('PATCH', `/bookings/${id}/confirm`),
+    dispute: (id: string, reason: string) =>
+      request<{ id: string; bookingId: string; reason: string; status: string }>(
+        'POST', `/bookings/${id}/dispute`, { reason }
+      ),
   },
 
   // ─── Messages ───────────────────────────────────────────────────────────
@@ -360,7 +366,10 @@ async function dotnetRequest<T>(method: string, path: string, body?: unknown): P
 
   if (!res.ok) {
     let msg = 'حدث خطأ';
-    try { msg = JSON.parse(text).messageAr || msg; } catch { /* ignore */ }
+    try { 
+      const parsed = JSON.parse(text);
+      msg = parsed.messageAr || parsed.message || msg; 
+    } catch { /* ignore */ }
     throw new Error(msg);
   }
 

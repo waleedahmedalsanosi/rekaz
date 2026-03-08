@@ -8,11 +8,17 @@ namespace Ziena.API.Controllers;
 [Route("api/wallet")]
 public class WalletController(IWalletService walletService) : ControllerBase
 {
+    [HttpGet]
+    public IActionResult GetEmptyWallet() => Ok(new WalletDto(Guid.Empty, AvailableBalance: 0m, PendingBalance: 0m));
+
     // GET api/wallet/{providerRefId}  — accepts Node.js provider ID (e.g. "p1")
     [HttpGet("{providerRefId}")]
     [ProducesResponseType(typeof(WalletDto), StatusCodes.Status200OK)]
     public async Task<IActionResult> GetWallet(string providerRefId)
     {
+        if (string.IsNullOrWhiteSpace(providerRefId))
+            return Ok(new WalletDto(Guid.Empty, AvailableBalance: 0m, PendingBalance: 0m));
+
         try
         {
             var wallet = await walletService.GetWalletByProviderRefAsync(providerRefId);

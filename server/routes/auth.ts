@@ -78,8 +78,10 @@ router.post('/send-otp', async (req, res) => {
       await db.prepare('INSERT OR REPLACE INTO otp_codes (phone, code, expires_at) VALUES (?,?,?)').run(phone, orderId, expiresAt);
       res.json({ success: true, message: 'تم إرسال رمز التحقق عبر واتساب', via: 'whatsapp' });
     } else {
-      // Fallback: random code printed to console (dev / OTPless not configured)
-      const code = Math.floor(100000 + Math.random() * 900000).toString();
+      // Fallback: random 4-digit code printed to console (dev / OTPless not configured)
+      // Demo phones always get code 1234 for easy testing
+      const DEMO_PHONES = ['0555123456', '0501234567', '0555234567', '0555345678'];
+      const code = DEMO_PHONES.includes(phone) ? '1234' : Math.floor(1000 + Math.random() * 9000).toString();
       console.log(`[OTP] Phone: ${phone} → Code: ${code}`);
       await db.prepare('INSERT OR REPLACE INTO otp_codes (phone, code, expires_at) VALUES (?,?,?)').run(phone, code, expiresAt);
       res.json({ success: true, message: 'تم إرسال رمز التحقق', via: 'console' });
@@ -140,6 +142,29 @@ router.post('/verify-otp', async (req, res) => {
       user = await db.prepare('SELECT * FROM users WHERE id = ?').get(userId);
     } else if (user.role === 'ADMIN') {
       return res.status(403).json({ error: 'استخدم صفحة دخول المسؤولين' });
+    } else if (role === 'provider' && user.role !== 'PROVIDER') {
+      // Allow CLIENT → PROVIDER upgrade (user is becoming a provider)
+      await db.prepare('UPDATE users SET role = ? WHERE id = ?').run('PROVIDER', user.id);
+
+      // Check if provider record exists; if not, create it
+      const existingProvider = await db.prepare('SELECT id FROM providers WHERE user_id = ?').get(user.id) as any;
+      if (!existingProvider) {
+        const providerId = randomUUID();
+        const userName = name || user.name || 'مبدعة جديدة';
+        await db.prepare(
+          'INSERT INTO providers (id, user_id, specialty, city) VALUES (?,?,?,?)'
+        ).run(providerId, user.id, specialty || '', city || '');
+        await db.prepare('INSERT INTO wallets (id, provider_id) VALUES (?,?)').run(randomUUID(), providerId);
+
+        const dotnetOrigin = process.env.DOTNET_API_URL || 'http://localhost:5000';
+        fetch(`${dotnetOrigin}/api/merchants/ensure`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ providerRefId: providerId, businessName: userName }),
+        }).catch(() => { /* non-critical */ });
+      }
+
+      user = await db.prepare('SELECT * FROM users WHERE id = ?').get(user.id);
     }
 
     const token = await createSession(user.id);
@@ -192,6 +217,23 @@ router.get('/me', requireAuth, async (req: AuthRequest, res) => {
       role: full.role,
       avatar: full.avatar,
       providerId: full.provider_id || undefined,
+    });
+  } catch { res.status(500).json({ error: 'خطأ في الخادم' }); }
+});
+
+// PATCH /api/auth/me — update current user profile (any role)
+router.patch('/me', requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const { name, phone } = req.body;
+    if (!name && !phone) return res.status(400).json({ error: 'لا توجد بيانات للتحديث' });
+
+    await db.prepare('UPDATE users SET name = COALESCE(?, name), phone = COALESCE(?, phone) WHERE id = ?')
+      .run(name || null, phone || null, req.userId);
+
+    const full = await getUserWithProvider(req.userId!);
+    res.json({
+      id: full.id, name: full.name, phone: full.phone, email: full.email,
+      role: full.role, avatar: full.avatar, providerId: full.provider_id || undefined,
     });
   } catch { res.status(500).json({ error: 'خطأ في الخادم' }); }
 });

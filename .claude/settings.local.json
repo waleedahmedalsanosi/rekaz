@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__paper__create_artboard",
+      "Bash(curl -s http://localhost:3001/api/auth/send-otp -X POST -H \"Content-Type: application/json\" -d '{\"\"phone\"\":\"\"0555123456\"\"}')"
+    ]
+  }
+}

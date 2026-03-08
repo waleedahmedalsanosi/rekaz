@@ -1,14 +1,24 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+Arabic:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@200;300;400;500;600;700;800;900&display=swap');
 @import "tailwindcss";
 
 @theme {
-  --font-sans: "Inter", "Noto Sans Arabic", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "Cairo", ui-sans-serif, system-ui, sans-serif;
+  --color-brand: #C9956A;
+  --color-brand-dark: #1C1410;
+  --color-brand-taupe: #8B7355;
+  --color-warm-gray: #EDE8E2;
+  --color-bg: #FAF7F4;
+  --color-surface: #FFFFFF;
+  --color-success: #4CAF50;
+  --color-error: #E05A5A;
+  --color-warning: #E8A54B;
 }
 
 @layer base {
   body {
-    @apply bg-[#F8F9FA] text-[#1A1A1A] overflow-x-hidden;
+    @apply bg-[#FAF7F4] text-[#1C1410] overflow-x-hidden;
     direction: rtl;
+    font-family: "Cairo", sans-serif;
     -webkit-tap-highlight-color: transparent;
   }
 }

@@ -18,6 +18,7 @@ interface AuthContextValue {
   login: (apiUser: ApiUser, token: string) => void;
   logout: () => void;
   switchRole: (role: UserRole) => void;
+  updateUser: (patch: Partial<AuthUser>) => void;
 }
 
 const AuthContext = createContext<AuthContextValue>({
@@ -26,6 +27,7 @@ const AuthContext = createContext<AuthContextValue>({
   login: () => {},
   logout: () => {},
   switchRole: () => {},
+  updateUser: () => {},
 });
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
@@ -88,6 +90,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     localStorage.removeItem('token');
   };
 
+  const updateUser = (patch: Partial<AuthUser>) => {
+    setUser(prev => {
+      if (!prev) return prev;
+      const next = { ...prev, ...patch };
+      localStorage.setItem('zeina_user', JSON.stringify(next));
+      return next;
+    });
+  };
+
   // Dev-only: switch between demo users without re-authenticating
   const switchRole = (role: UserRole) => {
     if (!user) return;
@@ -102,7 +113,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, isLoading, login, logout, switchRole }}>
+    <AuthContext.Provider value={{ user, isLoading, login, logout, switchRole, updateUser }}>
       {children}
     </AuthContext.Provider>
   );

@@ -167,4 +167,32 @@ router.patch('/:id/confirm', requireAuth, async (req: AuthRequest, res) => {
   } catch { res.status(500).json({ error: 'خطأ في الخادم' }); }
 });
 
+// POST /api/bookings/:id/dispute — client files a dispute for a booking
+router.post('/:id/dispute', requireAuth, async (req: AuthRequest, res) => {
+  try {
+    if (req.userRole !== 'CLIENT') return res.status(403).json({ error: 'للعملاء فقط' });
+
+    const { reason } = req.body;
+    if (!reason?.trim()) return res.status(400).json({ error: 'يرجى ذكر سبب النزاع' });
+
+    const booking = await db.prepare('SELECT * FROM bookings WHERE id = ? AND customer_id = ?').get(req.params.id, req.userId) as any;
+    if (!booking) return res.status(404).json({ error: 'الحجز غير موجود' });
+    if (booking.status === 'DISPUTED') return res.status(400).json({ error: 'تم فتح نزاع لهذا الحجز مسبقاً' });
+    if (!['CONFIRMED', 'COMPLETED'].includes(booking.status)) {
+      return res.status(400).json({ error: 'لا يمكن فتح نزاع لهذا الحجز' });
+    }
+
+    const { randomUUID } = await import('crypto');
+    const disputeId = randomUUID();
+
+    await db.prepare(
+      'INSERT INTO disputes (id, booking_id, reason, status, client_id, provider_id) VALUES (?,?,?,?,?,?)'
+    ).run(disputeId, booking.id, reason.trim(), 'OPEN', booking.customer_id, booking.provider_id);
+
+    await db.prepare('UPDATE bookings SET status = ?, dispute_id = ? WHERE id = ?').run('DISPUTED', disputeId, booking.id);
+
+    res.status(201).json({ id: disputeId, bookingId: booking.id, reason: reason.trim(), status: 'OPEN' });
+  } catch { res.status(500).json({ error: 'خطأ في الخادم' }); }
+});
+
 export default router;

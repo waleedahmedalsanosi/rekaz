@@ -14,7 +14,10 @@ public class NotificationsController(INotificationService notificationService) :
     {
         var publicKey = await notificationService.GetVapidPublicKeyAsync();
         if (string.IsNullOrEmpty(publicKey))
-            return NotFound(new { message = "VAPID keys not initialised yet." });
+            return NotFound(new { 
+                message = "VAPID keys not initialised yet.",
+                messageAr = "لم يتم تهيئة مفاتيح التنبيهات في الخادم" 
+            });
 
         return Ok(new { publicKey });
     }

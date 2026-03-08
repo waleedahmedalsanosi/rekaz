@@ -58,6 +58,7 @@ export default function ProviderApp() {
   const [subView, setSubView] = useState<string | null>(null);
   const [showModal, setShowModal] = useState<string | null>(null);
   const [selectedItem, setSelectedItem] = useState<any>(null);
+  const [provBookingsTab, setProvBookingsTab] = useState<'new' | 'upcoming' | 'completed'>('new');
 
   const [bookings, setBookings] = useState<ApiBooking[]>([]);
   const [customers, setCustomers] = useState<any[]>([]);
@@ -74,6 +75,7 @@ export default function ProviderApp() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [dataLoading, setDataLoading] = useState(true);
   const [notifStatus, setNotifStatus] = useState<'idle' | 'loading' | 'enabled' | 'blocked'>('idle');
+  const [providerRating, setProviderRating] = useState(0);
 
   const [storeInfo, setStoreInfo] = useState({
     name: user?.name || '',
@@ -95,7 +97,9 @@ export default function ProviderApp() {
         api.bookings.list(),
         api.services.list(),
         api.conversations.list(),
-        dotnetApi.wallet.get(user?.providerId ?? ''),
+        user?.providerId 
+          ? dotnetApi.wallet.get(user.providerId) 
+          : Promise.resolve({ merchantId: '', availableBalance: 0, pendingBalance: 0 }),
         api.wallet.transactions(),
         api.providers.getMe().catch(() => null),
       ]);
@@ -105,6 +109,17 @@ export default function ProviderApp() {
       setWallet(w);
       setTransactions(txns);
       if (myProfile?.workingHours) setWorkingHours(myProfile.workingHours);
+      if (myProfile) {
+        setProviderRating(myProfile.rating || 0);
+        setStoreInfo({
+          name: myProfile.name || user?.name || '',
+          specialty: myProfile.specialty || '',
+          bio: myProfile.bio || '',
+          city: myProfile.city || '',
+          phone: myProfile.phone || user?.phone || '',
+          coveredNeighborhoods: myProfile.coveredNeighborhoods || [],
+        });
+      }
       // Derive unique customers from bookings
       const custMap = new Map<string, any>();
       bkgs.forEach(b => {
@@ -168,9 +183,8 @@ export default function ProviderApp() {
   const bottomNavItems = [
     { id: 'dashboard', label: 'الرئيسية', icon: Home },
     { id: 'bookings', label: 'الحجوزات', icon: Calendar },
-    { id: 'services', label: 'الخدمات', icon: ShoppingBag },
-    { id: 'customers', label: 'العملاء', icon: Users },
-    { id: 'settings', label: 'الإعدادات', icon: Settings },
+    { id: 'wallet', label: 'المحفظة', icon: Wallet },
+    { id: 'settings', label: 'حسابي', icon: Settings },
   ];
 
   const handleClose = () => { setShowModal(null); setSelectedItem(null); };
@@ -320,211 +334,220 @@ export default function ProviderApp() {
   };
 
   // ─── Render: Dashboard ───────────────────────────────────────────────────
-  const renderDashboard = () => (
-    <div className="space-y-6 pb-24">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-black tracking-tight">أهلاً {user?.name || 'بك'} 👋</h2>
-          <p className="text-sm text-gray-500">إليك ملخص أعمالك اليوم</p>
-        </div>
-        <div className="w-12 h-12 rounded-2xl bg-orange-100 border-2 border-white shadow-sm overflow-hidden">
-          <img src="https://picsum.photos/seed/user/100/100" alt="Profile" />
-        </div>
-      </div>
-
-      <div className="flex gap-4 overflow-x-auto pb-2 no-scrollbar -mx-4 px-4">
-        {[
-          { label: 'صافي الدخل', value: `${wallet.availableBalance.toLocaleString()} ﷼`, icon: TrendingUp, color: 'text-green-600', bg: 'bg-green-50' },
-          { label: 'معلّق', value: `${wallet.pendingBalance} ﷼`, icon: Clock, color: 'text-orange-600', bg: 'bg-orange-50' },
-          { label: 'الحجوزات', value: String(bookings.length), icon: Calendar, color: 'text-orange-600', bg: 'bg-orange-50' },
-          { label: 'تقييمك', value: '4.9/5', icon: Star, color: 'text-yellow-600', bg: 'bg-yellow-50' },
-        ].map((stat, i) => (
-          <div key={i} className="min-w-35 p-4 bg-white rounded-3xl border border-gray-100 shadow-sm shrink-0">
-            <div className={`w-10 h-10 rounded-xl ${stat.bg} ${stat.color} flex items-center justify-center mb-3`}>
-              <stat.icon size={20} />
+  const renderDashboard = () => {
+    const completedCount = bookings.filter(b => b.status === BookingStatus.COMPLETED).length;
+    const thisMonthEarnings = transactions
+      .filter(t => t.type === 'CREDIT')
+      .reduce((s, t) => s + Math.abs(t.amount), 0);
+    const upcomingBookings = bookings.filter(b =>
+      b.status === BookingStatus.CONFIRMED || b.status === BookingStatus.PENDING
+    ).slice(0, 3);
+    return (
+      <div className="pb-28">
+        {/* Header */}
+        <div className="flex items-center justify-between mb-5 pt-2">
+          <div className="flex items-center gap-2">
+            <div className="w-10 h-10 rounded-full bg-white border border-[#EDE8E2] flex items-center justify-center">
+              <Bell size={18} className="text-[#8B7355]" />
             </div>
-            <p className="text-[10px] text-gray-400 font-bold uppercase">{stat.label}</p>
-            <h3 className="text-lg font-black">{stat.value}</h3>
+            <div className="w-10 h-10 rounded-full bg-[#C9956A] flex items-center justify-center text-white font-black text-base">
+              {user?.name?.[0] || 'م'}
+            </div>
           </div>
-        ))}
-      </div>
-
-      <div className="bg-white p-5 rounded-4xl border border-gray-100 shadow-sm">
-        <h3 className="font-bold mb-4">أداء المبيعات</h3>
-        <div className="h-45 -mr-4">
-          <ResponsiveContainer width="100%" height="100%">
-            <AreaChart data={salesData}>
-              <defs>
-                <linearGradient id="colorSales" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#f97316" stopOpacity={0.2} />
-                  <stop offset="95%" stopColor="#f97316" stopOpacity={0} />
-                </linearGradient>
-              </defs>
-              <Tooltip contentStyle={{ borderRadius: 16, border: 'none', boxShadow: '0 4px 20px rgba(0,0,0,.08)' }} />
-              <Area type="monotone" dataKey="sales" stroke="#f97316" strokeWidth={3} fillOpacity={1} fill="url(#colorSales)" />
-            </AreaChart>
-          </ResponsiveContainer>
-        </div>
-      </div>
-
-      <div className="space-y-4">
-        <div className="flex items-center justify-between">
-          <h3 className="font-bold">حجوزات اليوم</h3>
-          <button onClick={() => setActiveTab('bookings')} className="text-xs text-orange-600 font-bold">عرض الكل</button>
-        </div>
-        {bookings.filter(b => b.status === BookingStatus.PENDING).length === 0 ? (
-          <div className="p-8 bg-white rounded-3xl border border-gray-100 text-center">
-            <p className="text-gray-400 text-sm">لا توجد حجوزات معلقة</p>
+          <div className="text-right">
+            <p className="text-xs text-[#8B7355]">لوحة التحكم</p>
+            <h1 className="text-2xl font-black text-[#1C1410]">{user?.name || 'مبدعة'}</h1>
           </div>
-        ) : (
-          <div className="space-y-3">
-            {bookings.slice(0, 3).map((booking) => (
-              <div key={booking.id} className="p-4 bg-white rounded-3xl border border-gray-100 flex items-center gap-4">
-                <div className="w-12 h-12 rounded-2xl bg-gray-50 flex items-center justify-center text-orange-600 shrink-0">
-                  <Calendar size={24} />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <h4 className="text-sm font-bold truncate">{services.find(s => s.id === booking.serviceId)?.name || 'حجز خدمة'}</h4>
-                  <p className="text-[10px] text-gray-400">{customers.find(c => c.id === booking.customerId)?.name || 'عميل'} • {booking.time}</p>
-                  {booking.neighborhood && (
-                    <div className="flex items-center gap-1 mt-0.5">
-                      <MapPin size={9} className="text-gray-400" />
-                      <span className="text-[9px] text-gray-400">{booking.neighborhood}</span>
-                    </div>
-                  )}
-                </div>
-                <div className="flex flex-col items-end gap-2 shrink-0">
-                  <p className="font-black text-sm">{booking.servicePrice} ﷼</p>
-                  {booking.status === BookingStatus.PENDING && (
-                    <div className="flex gap-1">
-                      <button onClick={() => { setSelectedItem(booking); setShowModal('confirm_accept_booking'); }} className="p-1.5 bg-green-50 text-green-600 rounded-lg hover:bg-green-100 transition-colors">
-                        <CheckCircle size={14} />
-                      </button>
-                      <button onClick={() => { setSelectedItem(booking); setShowModal('confirm_reject_booking'); }} className="p-1.5 bg-red-50 text-red-600 rounded-lg hover:bg-red-100 transition-colors">
-                        <Plus size={14} className="rotate-45" />
-                      </button>
-                    </div>
-                  )}
-                </div>
+        </div>
+
+        {/* Earnings card */}
+        <div className="bg-[#1C1410] rounded-3xl p-5 mb-5 text-white overflow-hidden relative">
+          <div className="absolute -left-8 -top-8 w-32 h-32 bg-white/5 rounded-full" />
+          <div className="absolute -left-4 top-12 w-20 h-20 bg-white/5 rounded-full" />
+          <p className="text-xs text-white/50 mb-1 text-right">أرباح هذا الشهر</p>
+          <h2 className="text-4xl font-black text-right mb-1 relative z-10">
+            {(wallet.availableBalance + wallet.pendingBalance).toLocaleString()} <span className="text-2xl font-bold">ريال</span>
+          </h2>
+          {thisMonthEarnings > 0 && (
+            <p className="text-xs text-green-400 font-bold text-right mb-4">↗ +{thisMonthEarnings.toLocaleString()} ريال إجمالي الأرباح</p>
+          )}
+          <div className="flex justify-between pt-4 border-t border-white/10">
+            {[
+              { label: 'الحجوزات', value: String(bookings.length) },
+              { label: 'مكتمل', value: String(completedCount) },
+              { label: 'التقييم', value: providerRating ? providerRating.toFixed(1) : '—' },
+            ].map((s, i) => (
+              <div key={i} className="text-center">
+                <p className="text-xl font-black">{s.value}</p>
+                <p className="text-[11px] text-white/50 mt-0.5">{s.label}</p>
               </div>
             ))}
           </div>
-        )}
+        </div>
+
+        {/* Upcoming bookings */}
+        <div>
+          <div className="flex items-center justify-between mb-3">
+            <button onClick={() => setActiveTab('bookings')} className="text-xs text-[#C9956A] font-bold">عرض الكل</button>
+            <h2 className="font-black text-lg text-[#1C1410]">الحجوزات القادمة</h2>
+          </div>
+          {upcomingBookings.length === 0 ? (
+            <div className="bg-white rounded-3xl border border-[#EDE8E2] p-8 text-center">
+              <Calendar size={32} className="mx-auto text-[#EDE8E2] mb-2" />
+              <p className="text-[#8B7355] text-sm font-bold">لا توجد حجوزات قادمة</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {upcomingBookings.map(booking => {
+                const customer = customers.find(c => c.id === booking.customerId);
+                const statusCls = booking.status === BookingStatus.CONFIRMED
+                  ? 'bg-green-50 text-green-700'
+                  : 'bg-[#FAF7F4] text-[#C9956A]';
+                const statusText = booking.status === BookingStatus.CONFIRMED ? 'مقبول' : 'معلق';
+                return (
+                  <div key={booking.id} className="bg-white rounded-3xl border border-[#EDE8E2] p-4 flex items-center gap-3 shadow-sm">
+                    <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-[#EDE8E2] to-[#D4C8B8] flex items-center justify-center text-[#8B7355] font-black shrink-0">
+                      {(customer?.name || booking.customerName || 'ع')[0]}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <h4 className="font-black text-sm text-[#1C1410]">{customer?.name || booking.customerName || 'عميلة'}</h4>
+                      <p className="text-xs text-[#8B7355]">{booking.serviceName} · {booking.date} · م {booking.time}</p>
+                    </div>
+                    <div className="text-left shrink-0 space-y-1">
+                      <p className="font-black text-[#1C1410] text-sm">{booking.servicePrice} ريال</p>
+                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full block text-center ${statusCls}`}>{statusText}</span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
       </div>
-    </div>
-  );
+    );
+  };
 
   // ─── Render: Bookings ────────────────────────────────────────────────────
-  const renderBookings = () => (
-    <div className="space-y-6 pb-24">
-      <h2 className="text-2xl font-black">الحجوزات</h2>
-      {bookings.length === 0 ? (
-        <div className="p-12 bg-white rounded-4xl border border-gray-100 text-center">
-          <Calendar size={48} className="mx-auto text-gray-200 mb-4" />
-          <p className="text-gray-400 font-bold">لا توجد حجوزات بعد</p>
-        </div>
-      ) : (
-        <div className="space-y-4">
-          {bookings.map((booking) => {
-            const customer = customers.find(c => c.id === booking.customerId);
-            const bothConfirmed = booking.clientConfirmed && booking.providerConfirmed;
-            const statusColor = {
-              [BookingStatus.CONFIRMED]: 'bg-green-500',
-              [BookingStatus.PENDING]: 'bg-orange-400',
-              [BookingStatus.COMPLETED]: 'bg-blue-400',
-              [BookingStatus.CANCELLED]: 'bg-gray-300',
-              [BookingStatus.DISPUTED]: 'bg-red-400',
-            }[booking.status];
-            const statusLabel = {
-              [BookingStatus.CONFIRMED]: 'مؤكد',
-              [BookingStatus.PENDING]: 'معلق',
-              [BookingStatus.COMPLETED]: 'مكتمل',
-              [BookingStatus.CANCELLED]: 'ملغي',
-              [BookingStatus.DISPUTED]: 'نزاع',
-            }[booking.status];
+  const renderBookings = () => {
+    const newBookings = bookings.filter(b => b.status === BookingStatus.PENDING);
+    const upcomingBkgs = bookings.filter(b => b.status === BookingStatus.CONFIRMED);
+    const completedBkgs = bookings.filter(b => b.status === BookingStatus.COMPLETED || b.status === BookingStatus.CANCELLED);
+    const tabBookings = provBookingsTab === 'new' ? newBookings : provBookingsTab === 'upcoming' ? upcomingBkgs : completedBkgs;
 
-            return (
-              <div key={booking.id} className="p-5 bg-white rounded-4xl border border-gray-100 shadow-sm relative overflow-hidden">
-                <div className={`absolute top-0 right-0 w-1.5 h-full ${statusColor}`} />
-                <div className="flex justify-between items-start mb-2">
-                  <div>
-                    <h4 className="font-bold">{services.find(s => s.id === booking.serviceId)?.name}</h4>
-                    <p className="text-xs text-gray-400 mt-0.5">
-                      العميلة: {customer?.name}
-                      {/* رقم الجوال يظهر فقط بعد تأكيد الطرفين */}
-                      {bothConfirmed && customer?.phone && (
-                        <span className="mr-2 text-orange-600 font-bold">({customer.phone})</span>
-                      )}
-                    </p>
-                    <p className="text-[10px] text-gray-400">{booking.date} • {booking.time}</p>
-                    {booking.neighborhood && (
-                      <div className="flex items-center gap-1 mt-0.5">
-                        <MapPin size={10} className="text-gray-400" />
-                        <span className="text-[10px] text-gray-400">{booking.neighborhood}</span>
+    return (
+      <div className="pb-28">
+        {/* Title */}
+        <div className="text-right mb-5 pt-2">
+          <h1 className="text-3xl font-black text-[#1C1410]">إدارة الحجوزات</h1>
+        </div>
+
+        {/* Tabs */}
+        <div className="bg-white rounded-2xl border border-[#EDE8E2] p-1 flex mb-5">
+          {(['new', 'upcoming', 'completed'] as const).map((tab, i) => (
+            <button
+              key={tab}
+              onClick={() => setProvBookingsTab(tab)}
+              className={`flex-1 py-2 text-sm font-bold rounded-xl transition-all relative ${
+                provBookingsTab === tab ? 'bg-[#1C1410] text-white' : 'text-[#8B7355]'
+              }`}
+            >
+              {['جديدة', 'قادمة', 'مكتملة'][i]}
+              {tab === 'new' && newBookings.length > 0 && (
+                <span className={`absolute -top-1 -left-1 w-4 h-4 rounded-full text-[9px] font-black flex items-center justify-center ${provBookingsTab === 'new' ? 'bg-white text-[#1C1410]' : 'bg-[#C9956A] text-white'}`}>
+                  {newBookings.length}
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
+
+        {tabBookings.length === 0 ? (
+          <div className="py-16 text-center">
+            <Calendar size={40} className="mx-auto text-[#EDE8E2] mb-3" />
+            <p className="text-[#8B7355] font-bold">لا توجد حجوزات</p>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {tabBookings.map(booking => {
+              const customer = customers.find(c => c.id === booking.customerId);
+              const clientName = customer?.name || booking.customerName || 'عميلة';
+              const bothConfirmed = booking.clientConfirmed && booking.providerConfirmed;
+              const isNew = booking.status === BookingStatus.PENDING;
+              const isConfirmed = booking.status === BookingStatus.CONFIRMED;
+              const formattedDate = booking.date
+                ? new Date(booking.date).toLocaleDateString('ar-SA', { weekday: 'long', day: 'numeric', month: 'long' })
+                : booking.date;
+
+              return (
+                <div key={booking.id} className="bg-white rounded-3xl border border-[#EDE8E2] overflow-hidden shadow-sm">
+                  {/* Card header */}
+                  <div className="flex items-center justify-between px-4 py-2.5 border-b border-[#EDE8E2]">
+                    {isNew ? (
+                      <span className="text-[11px] font-bold text-[#C9956A] flex items-center gap-1">
+                        <span className="w-1.5 h-1.5 bg-[#C9956A] rounded-full" />طلب جديد
+                      </span>
+                    ) : (
+                      <span className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full ${
+                        isConfirmed ? 'bg-green-50 text-green-700' : 'bg-[#FAF7F4] text-[#8B7355]'
+                      }`}>{isConfirmed ? 'مقبول' : booking.status === BookingStatus.COMPLETED ? 'مكتمل' : 'ملغي'}</span>
+                    )}
+                    <span className="text-xs text-[#8B7355]">{formattedDate}</span>
+                  </div>
+
+                  {/* Card body */}
+                  <div className="p-4">
+                    <div className="flex items-center gap-3 mb-3">
+                      <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-[#EDE8E2] to-[#D4C8B8] flex items-center justify-center text-[#8B7355] font-black shrink-0">
+                        {clientName[0]}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <h4 className="font-black text-base text-[#1C1410]">{clientName}</h4>
+                        <p className="text-xs text-[#8B7355]">{booking.serviceName} · {booking.time}</p>
+                      </div>
+                      <p className="font-black text-[#1C1410] shrink-0">{booking.servicePrice} ريال</p>
+                    </div>
+
+                    {/* Actions */}
+                    {isNew && (
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => { setSelectedItem(booking); setShowModal('confirm_accept_booking'); }}
+                          className="flex-1 py-3 bg-[#C9956A] text-white rounded-2xl text-sm font-black"
+                        >قبول الحجز</button>
+                        <button
+                          onClick={() => { setSelectedItem(booking); setShowModal('confirm_reject_booking'); }}
+                          className="flex-1 py-3 bg-white text-[#8B7355] rounded-2xl text-sm font-bold border border-[#EDE8E2]"
+                        >رفض</button>
+                      </div>
+                    )}
+                    {isConfirmed && !booking.providerConfirmed && (
+                      <button
+                        onClick={() => { setSelectedItem(booking); setShowModal('confirm_service_complete'); }}
+                        className="w-full py-3 bg-[#1C1410] text-white rounded-2xl text-sm font-black"
+                      >✓ تأكيد اكتمال الخدمة</button>
+                    )}
+                    {isConfirmed && booking.providerConfirmed && !bothConfirmed && (
+                      <div className="flex items-center gap-1 text-xs text-[#C9956A] font-bold justify-center">
+                        <CheckCircle size={13} />
+                        <span>بانتظار تأكيد العميلة</span>
                       </div>
                     )}
                   </div>
-                  <div className="text-left">
-                    <p className="font-black text-orange-600">{booking.servicePrice} ﷼</p>
-                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full mt-1 inline-block ${
-                      booking.status === BookingStatus.CONFIRMED ? 'bg-green-50 text-green-700' :
-                      booking.status === BookingStatus.PENDING ? 'bg-orange-50 text-orange-700' :
-                      booking.status === BookingStatus.COMPLETED ? 'bg-blue-50 text-blue-700' :
-                      booking.status === BookingStatus.DISPUTED ? 'bg-red-50 text-red-700' :
-                      'bg-gray-100 text-gray-500'
-                    }`}>{statusLabel}</span>
-                  </div>
                 </div>
-
-                {/* Confirmation status row */}
-                {booking.status === BookingStatus.CONFIRMED && (
-                  <div className="flex items-center gap-2 mb-2 text-[10px]">
-                    <span className={`flex items-center gap-0.5 ${booking.providerConfirmed ? 'text-green-600' : 'text-gray-400'}`}>
-                      <CheckCircle size={10} /> أنتِ
-                    </span>
-                    <span className="text-gray-200">|</span>
-                    <span className={`flex items-center gap-0.5 ${booking.clientConfirmed ? 'text-green-600' : 'text-gray-400'}`}>
-                      <CheckCircle size={10} /> العميلة
-                    </span>
-                  </div>
-                )}
-
-                <div className="flex gap-2 mt-3 flex-wrap">
-                  {booking.status === BookingStatus.PENDING && (
-                    <>
-                      <button onClick={() => { setSelectedItem(booking); setShowModal('confirm_accept_booking'); }} className="flex-1 py-3 bg-green-600 text-white rounded-2xl text-xs font-black hover:bg-green-700 transition-colors">قبول</button>
-                      <button onClick={() => { setSelectedItem(booking); setShowModal('confirm_reject_booking'); }} className="flex-1 py-3 bg-red-50 text-red-600 rounded-2xl text-xs font-black hover:bg-red-100 transition-colors">رفض</button>
-                    </>
-                  )}
-                  {booking.status === BookingStatus.CONFIRMED && !booking.providerConfirmed && (
-                    <button
-                      onClick={() => { setSelectedItem(booking); setShowModal('confirm_service_complete'); }}
-                      className="flex-1 py-3 bg-orange-600 text-white rounded-2xl text-xs font-black"
-                    >
-                      ✓ أكّدي اكتمال الخدمة
-                    </button>
-                  )}
-                  {booking.status === BookingStatus.CONFIRMED && booking.providerConfirmed && !booking.clientConfirmed && (
-                    <div className="flex items-center gap-1 text-xs text-orange-600 font-bold bg-orange-50 px-3 py-2 rounded-2xl w-full">
-                      <CheckCircle size={12} />
-                      <span>أكّدتِ — بانتظار تأكيد العميلة</span>
-                    </div>
-                  )}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
-    </div>
-  );
+              );
+            })}
+          </div>
+        )}
+      </div>
+    );
+  };
 
   // ─── Render: Services ────────────────────────────────────────────────────
   const renderServices = () => (
     <div className="space-y-6 pb-24">
       <div className="flex items-center justify-between">
         <h2 className="text-2xl font-black">الخدمات</h2>
-        <button onClick={() => setShowModal('add_service')} className="bg-black text-white px-4 py-2 rounded-2xl text-xs font-bold flex items-center gap-2">
+        <button onClick={() => setShowModal('add_service')} className="bg-[#1C1410] text-white px-4 py-2 rounded-2xl text-xs font-bold flex items-center gap-2">
           <Plus size={16} /> إضافة
         </button>
       </div>
@@ -532,7 +555,7 @@ export default function ProviderApp() {
         <div className="p-12 bg-white rounded-4xl border border-gray-100 text-center">
           <ShoppingBag size={48} className="mx-auto text-gray-200 mb-4" />
           <p className="text-gray-400 font-bold">لا توجد خدمات بعد</p>
-          <button onClick={() => setShowModal('add_service')} className="mt-4 px-6 py-3 bg-black text-white rounded-2xl text-sm font-bold">أضفي خدمة جديدة</button>
+          <button onClick={() => setShowModal('add_service')} className="mt-4 px-6 py-3 bg-[#1C1410] text-white rounded-2xl text-sm font-bold">أضفي خدمة جديدة</button>
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-4">
@@ -548,7 +571,7 @@ export default function ProviderApp() {
                   <span className="text-[10px]">{service.duration} دقيقة</span>
                 </div>
                 <div className="flex items-center gap-2 mt-3">
-                  <p className="font-black text-orange-600 flex-1">{service.price} ﷼</p>
+                  <p className="font-black text-[#C9956A] flex-1">{service.price} ﷼</p>
                   <button onClick={() => { setSelectedItem(service); setShowModal('edit_service'); }} className="p-2 bg-gray-50 rounded-xl hover:bg-gray-100 transition-colors">
                     <Settings size={15} className="text-gray-400" />
                   </button>
@@ -569,14 +592,14 @@ export default function ProviderApp() {
     <div className="space-y-6 pb-24">
       <div className="flex items-center justify-between">
         <h2 className="text-2xl font-black">العملاء</h2>
-        <button onClick={() => setShowModal('add_customer')} className="bg-black text-white px-4 py-2 rounded-2xl text-xs font-bold flex items-center gap-2">
+        <button onClick={() => setShowModal('add_customer')} className="bg-[#1C1410] text-white px-4 py-2 rounded-2xl text-xs font-bold flex items-center gap-2">
           <Plus size={16} /> إضافة
         </button>
       </div>
       <div className="bg-white rounded-4xl border border-gray-100 shadow-sm divide-y divide-gray-50">
         {customers.map((customer) => (
           <div key={customer.id} className="p-5 flex items-center gap-4">
-            <div className="w-12 h-12 rounded-2xl bg-orange-50 text-orange-600 flex items-center justify-center font-black shrink-0">
+            <div className="w-12 h-12 rounded-2xl bg-[#FAF7F4] text-[#C9956A] flex items-center justify-center font-black shrink-0">
               {customer.name[0]}
             </div>
             <div className="flex-1 min-w-0">
@@ -606,8 +629,8 @@ export default function ProviderApp() {
       </div>
 
       <div className="bg-white rounded-4xl border border-gray-100 shadow-sm p-6 text-center space-y-5">
-        <div className="w-16 h-16 bg-orange-50 rounded-2xl flex items-center justify-center mx-auto">
-          <Bell size={28} className="text-orange-500" />
+        <div className="w-16 h-16 bg-[#FAF7F4] rounded-2xl flex items-center justify-center mx-auto">
+          <Bell size={28} className="text-[#C9956A]" />
         </div>
         <div>
           <h3 className="font-black text-lg">تنبيهات فورية</h3>
@@ -629,7 +652,7 @@ export default function ProviderApp() {
           <button
             onClick={enableNotifications}
             disabled={notifStatus === 'loading'}
-            className="w-full py-3.5 bg-orange-500 text-white font-black rounded-2xl hover:bg-orange-600 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+            className="w-full py-3.5 bg-[#C9956A] text-white font-black rounded-2xl hover:bg-[#C9956A] transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
           >
             <Bell size={18} />
             {notifStatus === 'loading' ? 'جارٍ التفعيل...' : '🔔 تفعيل التنبيهات'}
@@ -639,119 +662,179 @@ export default function ProviderApp() {
     </div>
   );
 
-    // ─── Render: Settings ────────────────────────────────────────────────────
+  // ─── Render: Settings / Profile ──────────────────────────────────────────
   const renderSettings = () => (
-    <div className="space-y-6 pb-24">
-      <h2 className="text-2xl font-black">الإعدادات</h2>
-      <div className="bg-white rounded-4xl border border-gray-100 shadow-sm overflow-hidden">
-        <div className="p-6 bg-linear-to-br from-orange-500 to-orange-600 text-white flex items-center gap-4">
-          <div className="w-16 h-16 rounded-2xl border-4 border-white/20 overflow-hidden shrink-0">
-            <img src="https://picsum.photos/seed/provider/100/100" alt="" />
-          </div>
-          <div className="flex-1">
-            <div className="flex items-center gap-2">
-              <h3 className="font-black text-lg">{storeInfo.name}</h3>
-              <div className="flex items-center gap-1 bg-blue-500 text-white text-[9px] font-black px-2 py-0.5 rounded-full">
-                <ShieldCheck size={9} />
-                <span>موثّقة</span>
+    <div className="pb-28">
+      {/* Dark header */}
+      <div className="-mx-5 bg-[#1C1410] text-white px-5 pt-6 pb-8 mb-6">
+        <div className="flex items-start justify-between mb-4">
+          <button
+            onClick={() => setSubView('store')}
+            className="px-4 py-2 rounded-2xl border border-white/20 text-sm font-bold text-white/80"
+          >
+            تعديل
+          </button>
+          <div className="text-right">
+            <div className="flex items-center justify-end gap-2 mb-1">
+              <h2 className="text-2xl font-black">{storeInfo.name || user?.name}</h2>
+              <div className="w-7 h-7 rounded-full bg-[#C9956A] flex items-center justify-center">
+                <CheckCircle size={14} className="text-white" fill="white" />
               </div>
             </div>
-            <p className="text-xs text-white/80">{storeInfo.specialty} • {storeInfo.city}</p>
+            <p className="text-sm text-white/60">{storeInfo.specialty} · عناية بالبشرة</p>
+            <div className="flex items-center justify-end gap-1 mt-1">
+              <span className="text-sm font-black text-[#C9956A]">★ {providerRating || '4.9'}</span>
+              <span className="text-xs text-white/40">({bookings.filter(b => b.status === 'COMPLETED').length} تقييم)</span>
+            </div>
           </div>
-          <button onClick={logout} className="p-2 bg-white/20 rounded-xl"><LogOut size={18} /></button>
+          <div className="w-14 h-14 rounded-full bg-[#C9956A] flex items-center justify-center text-white text-2xl font-black shrink-0">
+            {(storeInfo.name || user?.name || 'م')[0]}
+          </div>
         </div>
-        <div className="p-4 space-y-1">
+        {/* Stats row */}
+        <div className="flex justify-between pt-4 border-t border-white/10">
           {[
-            { id: 'store', label: 'معلومات المتجر', icon: ShoppingBag },
-            { id: 'hours', label: 'أوقات العمل', icon: Clock },
-            { id: 'wallet', label: 'المحفظة والأرباح', icon: Wallet },
-            { id: 'messages', label: 'رسائل العملاء', icon: MessageSquare, badge: unreadMessages },
-            { id: 'reports', label: 'التقارير والإحصائيات', icon: PieChart },
-            { id: 'notifications', label: 'التنبيهات', icon: Bell },
-          ].map((item) => (
-            <button
-              key={item.id}
-              onClick={() => setSubView(item.id)}
-              className="w-full p-4 flex items-center gap-4 hover:bg-gray-50 rounded-2xl transition-colors"
-            >
-              <div className="p-2 bg-gray-50 rounded-xl text-gray-500 relative">
-                <item.icon size={18} />
-                {(item.badge ?? 0) > 0 && (
-                  <div className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full text-white text-[9px] font-black flex items-center justify-center">
-                    {item.badge}
-                  </div>
-                )}
-              </div>
-              <span className="text-sm font-bold flex-1 text-right">{item.label}</span>
-              <ChevronRight size={16} className="text-gray-300" />
-            </button>
+            { label: 'عميلة', value: String(customers.length || '٢٤٠') },
+            { label: 'خبرة', value: '٣ سنوات' },
+            { label: 'الفئة', value: 'PRO' },
+          ].map((s, i) => (
+            <div key={i} className="text-center">
+              <p className="text-xl font-black">{s.value}</p>
+              <p className="text-[11px] text-white/40 mt-0.5">{s.label}</p>
+            </div>
           ))}
         </div>
       </div>
+
+      {/* Services section */}
+      <div className="mb-5">
+        <div className="flex items-center justify-between mb-3">
+          <button onClick={() => setShowModal('add_service')} className="flex items-center gap-1.5 px-4 py-2 bg-[#FAF7F4] border border-[#EDE8E2] rounded-2xl text-sm font-bold text-[#8B7355]">
+            <Plus size={15} />
+            إضافة خدمة
+          </button>
+          <h2 className="font-black text-lg text-[#1C1410]">خدماتي</h2>
+        </div>
+        {services.length === 0 ? (
+          <div className="py-10 text-center bg-white rounded-3xl border border-[#EDE8E2]">
+            <p className="text-[#8B7355] font-bold">لا توجد خدمات بعد</p>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {services.map(service => (
+              <div key={service.id} className="bg-white rounded-3xl border border-[#EDE8E2] px-4 py-3.5 flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-[#FAF7F4] flex items-center justify-center shrink-0">
+                  <Star size={16} className="text-[#C9956A]" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <h4 className="font-black text-sm text-[#1C1410]">{service.name}</h4>
+                  <p className="text-xs text-[#8B7355]">{service.duration} دقيقة · {service.price} ريال</p>
+                </div>
+                <button
+                  onClick={() => { setSelectedItem(service); setShowModal('edit_service'); }}
+                  className="p-2 text-[#8B7355] shrink-0"
+                >
+                  <Settings size={16} />
+                </button>
+                <div
+                  onClick={async () => {
+                    try {
+                      const updated = await api.services.update(service.id, { isAvailable: !service.isAvailable });
+                      setServices(prev => prev.map(s => s.id === updated.id ? updated : s));
+                    } catch { /* ignore */ }
+                  }}
+                  className={`w-11 h-6 rounded-full flex items-center cursor-pointer transition-colors shrink-0 ${service.isAvailable !== false ? 'bg-[#C9956A] justify-end pr-1' : 'bg-[#EDE8E2] justify-start pl-1'}`}
+                >
+                  <div className="w-4 h-4 bg-white rounded-full shadow" />
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Logout */}
+      <button onClick={logout} className="w-full py-3.5 bg-white border border-[#EDE8E2] rounded-2xl text-red-500 font-bold flex items-center justify-center gap-2">
+        <LogOut size={16} />
+        تسجيل الخروج
+      </button>
     </div>
   );
 
   // ─── Render: Wallet ──────────────────────────────────────────────────────
   const renderWallet = () => (
-    <div className="space-y-6 pb-24">
-      <div className="flex items-center gap-4">
-        <button onClick={() => setSubView(null)} className="p-2 bg-white rounded-xl shadow-sm"><ArrowLeft size={20} /></button>
-        <h2 className="text-2xl font-black">المحفظة</h2>
+    <div className="pb-28">
+      {/* Header */}
+      <div className="flex items-center justify-between mb-5 pt-2">
+        <div className="w-10 h-10 rounded-full bg-white border border-[#EDE8E2] flex items-center justify-center">
+          <Calendar size={16} className="text-[#8B7355]" />
+        </div>
+        <div className="text-right">
+          <p className="text-xs text-[#8B7355]">المحفظة</p>
+          <h1 className="text-2xl font-black text-[#1C1410]">أرباحي</h1>
+        </div>
       </div>
 
-      {/* Balance Cards */}
-      <div className="grid grid-cols-2 gap-4">
-        <div className="bg-gradient-to-br from-orange-500 to-orange-600 p-5 rounded-4xl text-white col-span-2">
-          <p className="text-xs text-white/80 font-bold mb-1">الرصيد المتاح للسحب</p>
-          <h2 className="text-4xl font-black">{wallet.availableBalance.toLocaleString()} <span className="text-2xl">﷼</span></h2>
-          <button
-            onClick={() => setShowModal('request_payout')}
-            disabled={wallet.availableBalance === 0}
-            className="mt-4 px-5 py-2.5 bg-white text-orange-600 rounded-2xl text-sm font-black disabled:opacity-50"
-          >
-            سحب الأرباح
-          </button>
-        </div>
-        <div className="bg-white p-4 rounded-3xl border border-gray-100 shadow-sm">
-          <p className="text-[10px] text-gray-400 font-bold">معلّق</p>
-          <h3 className="text-xl font-black mt-1">{wallet.pendingBalance} ﷼</h3>
-        </div>
-        <div className="bg-white p-4 rounded-3xl border border-gray-100 shadow-sm">
-          <p className="text-[10px] text-gray-400 font-bold">إجمالي الأرباح</p>
-          <h3 className="text-xl font-black mt-1">{(wallet.availableBalance + wallet.pendingBalance).toLocaleString()} ﷼</h3>
+      {/* Balance card */}
+      <div className="rounded-3xl p-5 mb-4 overflow-hidden relative" style={{ background: 'linear-gradient(135deg, #C9956A, #B8805A)' }}>
+        <div className="absolute -right-8 -top-8 w-32 h-32 bg-white/10 rounded-full" />
+        <div className="absolute -right-2 top-10 w-20 h-20 bg-white/10 rounded-full" />
+        <p className="text-xs text-white/70 text-right mb-1 relative z-10">الرصيد المتاح</p>
+        <h2 className="text-4xl font-black text-white text-right mb-4 relative z-10">
+          {wallet.availableBalance.toLocaleString()} <span className="text-2xl font-bold">ريال</span>
+        </h2>
+        <div className="flex justify-between relative z-10">
+          <div className="text-right">
+            <p className="text-[10px] text-white/60">لم يُسحب</p>
+            <p className="text-base font-black text-white">{wallet.availableBalance.toLocaleString()} ريال</p>
+          </div>
+          <div className="text-right">
+            <p className="text-[10px] text-white/60">قيد الانتظار</p>
+            <p className="text-base font-black text-white">{wallet.pendingBalance.toLocaleString()} ريال</p>
+          </div>
         </div>
       </div>
+
+      {/* Payout button */}
+      <button
+        onClick={() => setShowModal('request_payout')}
+        disabled={wallet.availableBalance === 0}
+        className="w-full py-4 bg-[#1C1410] text-white rounded-2xl font-black text-base mb-5 flex items-center justify-center gap-2 disabled:opacity-40"
+      >
+        ↓ طلب سحب الأرباح
+      </button>
 
       {/* Transactions */}
-      <div className="bg-white rounded-4xl border border-gray-100 shadow-sm p-5">
-        <h3 className="font-bold mb-4">سجل المعاملات</h3>
-        <div className="space-y-3">
-          {transactions.map(t => (
-            <div key={t.id} className="flex items-center gap-4">
-              <div className={`w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 ${
-                t.type === 'CREDIT' ? 'bg-green-50 text-green-600' :
-                t.type === 'PAYOUT' ? 'bg-blue-50 text-blue-600' :
-                'bg-red-50 text-red-600'
-              }`}>
-                {t.type === 'CREDIT' ? <TrendingUp size={16} /> : <Wallet size={16} />}
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-bold truncate">{t.description}</p>
-                <div className="flex items-center gap-2">
-                  <p className="text-[10px] text-gray-400">{t.createdAt}</p>
-                  {t.status === 'PENDING' && (
-                    <span className="text-[9px] font-bold text-orange-600 bg-orange-50 px-2 py-0.5 rounded-full">معلّق</span>
-                  )}
+      <div>
+        <h2 className="font-black text-lg text-right mb-3 text-[#1C1410]">المعاملات الأخيرة</h2>
+        {transactions.length === 0 ? (
+          <div className="py-10 text-center">
+            <Wallet size={36} className="mx-auto text-[#EDE8E2] mb-2" />
+            <p className="text-[#8B7355] font-bold">لا توجد معاملات بعد</p>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {transactions.map(t => {
+              const isIncome = t.type === 'CREDIT';
+              return (
+                <div key={t.id} className="bg-white rounded-2xl border border-[#EDE8E2] px-4 py-3.5 flex items-center gap-3">
+                  <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${isIncome ? 'bg-green-50' : 'bg-red-50'}`}>
+                    <span className={`text-base font-black ${isIncome ? 'text-green-500' : 'text-red-400'}`}>
+                      {isIncome ? '↑' : '↓'}
+                    </span>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-bold text-[#1C1410] truncate">{t.description}</p>
+                    <p className="text-[11px] text-[#8B7355]">{t.createdAt}</p>
+                  </div>
+                  <p className={`font-black text-sm shrink-0 ${isIncome ? 'text-green-600' : 'text-red-500'}`}>
+                    {isIncome ? '+' : ''}{t.amount.toLocaleString()} ريال
+                  </p>
                 </div>
-              </div>
-              <p className={`font-black text-sm shrink-0 ${
-                t.type === 'PAYOUT' ? 'text-red-500' : 'text-green-600'
-              }`}>
-                {t.amount > 0 ? '+' : ''}{t.amount} ﷼
-              </p>
-            </div>
-          ))}
-        </div>
+              );
+            })}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -777,7 +860,7 @@ export default function ProviderApp() {
               <div key={msg.id} className={`flex ${msg.senderRole === 'PROVIDER' ? 'justify-start' : 'justify-end'}`}>
                 <div className={`max-w-[75%] px-4 py-2.5 rounded-3xl text-sm ${
                   msg.senderRole === 'PROVIDER'
-                    ? 'bg-orange-600 text-white rounded-tr-sm'
+                    ? 'bg-[#C9956A] text-white rounded-tr-sm'
                     : 'bg-white text-gray-800 border border-gray-100 rounded-tl-sm shadow-sm'
                 }`}>
                   {msg.content}
@@ -798,7 +881,7 @@ export default function ProviderApp() {
             <button
               onClick={handleSendMessage}
               disabled={!chatInput.trim()}
-              className="p-2 bg-orange-600 text-white rounded-xl disabled:opacity-40"
+              className="p-2 bg-[#C9956A] text-white rounded-xl disabled:opacity-40"
             >
               <Send size={16} />
             </button>
@@ -826,7 +909,7 @@ export default function ProviderApp() {
                 onClick={() => handleOpenConversation(conv)}
                 className="w-full p-5 flex items-center gap-4 text-right hover:bg-gray-50 transition-colors"
               >
-                <div className="w-12 h-12 rounded-2xl bg-orange-50 text-orange-600 flex items-center justify-center font-black shrink-0 text-lg">
+                <div className="w-12 h-12 rounded-2xl bg-[#FAF7F4] text-[#C9956A] flex items-center justify-center font-black shrink-0 text-lg">
                   {conv.clientName[0]}
                 </div>
                 <div className="flex-1 min-w-0">
@@ -834,7 +917,7 @@ export default function ProviderApp() {
                   <p className="text-xs text-gray-400 truncate">{conv.lastMessage}</p>
                 </div>
                 {(conv.unreadCount ?? 0) > 0 && (
-                  <div className="w-5 h-5 bg-orange-600 rounded-full text-white text-[10px] font-black flex items-center justify-center shrink-0">
+                  <div className="w-5 h-5 bg-[#C9956A] rounded-full text-white text-[10px] font-black flex items-center justify-center shrink-0">
                     {conv.unreadCount}
                   </div>
                 )}
@@ -860,7 +943,7 @@ export default function ProviderApp() {
               <span className="font-bold text-sm">{wh.day}</span>
               <button
                 onClick={() => setWorkingHours(prev => prev.map((w, j) => j === i ? { ...w, enabled: !w.enabled } : w))}
-                className={`w-12 h-6 rounded-full transition-colors relative ${wh.enabled ? 'bg-orange-500' : 'bg-gray-200'}`}
+                className={`w-12 h-6 rounded-full transition-colors relative ${wh.enabled ? 'bg-[#C9956A]' : 'bg-gray-200'}`}
               >
                 <div className={`w-5 h-5 bg-white rounded-full shadow-sm absolute top-0.5 transition-all ${wh.enabled ? 'right-0.5' : 'left-0.5'}`} />
               </button>
@@ -869,11 +952,11 @@ export default function ProviderApp() {
               <div className="flex gap-3 items-center" dir="ltr">
                 <input type="time" value={wh.start}
                   onChange={e => setWorkingHours(prev => prev.map((w, j) => j === i ? { ...w, start: e.target.value } : w))}
-                  className="flex-1 bg-gray-50 rounded-xl px-3 py-2 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-orange-300" />
+                  className="flex-1 bg-gray-50 rounded-xl px-3 py-2 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-[#C9956A]" />
                 <span className="text-gray-400 text-xs font-bold">إلى</span>
                 <input type="time" value={wh.end}
                   onChange={e => setWorkingHours(prev => prev.map((w, j) => j === i ? { ...w, end: e.target.value } : w))}
-                  className="flex-1 bg-gray-50 rounded-xl px-3 py-2 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-orange-300" />
+                  className="flex-1 bg-gray-50 rounded-xl px-3 py-2 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-[#C9956A]" />
               </div>
             )}
           </div>
@@ -893,7 +976,7 @@ export default function ProviderApp() {
             toast(e.message || 'فشل حفظ أوقات العمل', 'error');
           }
         }}
-        className="w-full bg-black text-white py-5 rounded-3xl font-black flex items-center justify-center gap-2"
+        className="w-full bg-[#1C1410] text-white py-5 rounded-3xl font-black flex items-center justify-center gap-2"
       >
         <Save size={18} /> حفظ التغييرات
       </button>
@@ -912,7 +995,7 @@ export default function ProviderApp() {
         <button
           type="button"
           onClick={() => toast('رفع الصور قريباً ✨', 'info')}
-          className="relative w-24 h-24 rounded-3xl overflow-hidden border-4 border-orange-100 shadow-sm"
+          className="relative w-24 h-24 rounded-3xl overflow-hidden border-4 border-[#EDE8E2] shadow-sm"
         >
           <img src="https://picsum.photos/seed/provider/100/100" className="w-full h-full object-cover" alt="" />
           <div className="absolute inset-0 bg-black/30 flex items-center justify-center">
@@ -934,7 +1017,7 @@ export default function ProviderApp() {
               value={(storeInfo as any)[field.key]}
               onChange={e => setStoreInfo(p => ({ ...p, [field.key]: e.target.value }))}
               placeholder={field.placeholder}
-              className="w-full bg-white border border-gray-100 rounded-2xl px-4 py-4 font-bold shadow-sm focus:outline-none focus:ring-2 focus:ring-orange-400 text-sm"
+              className="w-full bg-white border border-gray-100 rounded-2xl px-4 py-4 font-bold shadow-sm focus:outline-none focus:ring-2 focus:ring-[#C9956A] text-sm"
             />
           </div>
         ))}
@@ -944,14 +1027,14 @@ export default function ProviderApp() {
             value={storeInfo.bio}
             onChange={e => setStoreInfo(p => ({ ...p, bio: e.target.value }))}
             rows={3}
-            className="w-full bg-white border border-gray-100 rounded-2xl px-4 py-4 font-bold shadow-sm focus:outline-none focus:ring-2 focus:ring-orange-400 text-sm resize-none"
+            className="w-full bg-white border border-gray-100 rounded-2xl px-4 py-4 font-bold shadow-sm focus:outline-none focus:ring-2 focus:ring-[#C9956A] text-sm resize-none"
           />
         </div>
 
         {/* Neighborhoods Coverage */}
         <div>
           <div className="flex items-center gap-2 mb-2 px-1">
-            <MapPin size={14} className="text-orange-500" />
+            <MapPin size={14} className="text-[#C9956A]" />
             <label className="text-xs font-bold text-gray-400">الأحياء المغطاة ({storeInfo.coveredNeighborhoods.length})</label>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -962,8 +1045,8 @@ export default function ProviderApp() {
                 onClick={() => toggleNeighborhood(n)}
                 className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all border ${
                   storeInfo.coveredNeighborhoods.includes(n)
-                    ? 'bg-orange-600 text-white border-orange-600'
-                    : 'bg-gray-50 text-gray-500 border-gray-100 hover:border-orange-200'
+                    ? 'bg-[#C9956A] text-white border-[#C9956A]'
+                    : 'bg-gray-50 text-gray-500 border-gray-100 hover:border-[#EDE8E2]'
                 }`}
               >
                 {n}
@@ -990,7 +1073,7 @@ export default function ProviderApp() {
             toast(e.message || 'حدث خطأ', 'error');
           }
         }}
-        className="w-full bg-black text-white py-5 rounded-3xl font-black flex items-center justify-center gap-2"
+        className="w-full bg-[#1C1410] text-white py-5 rounded-3xl font-black flex items-center justify-center gap-2"
       >
         <Save size={18} /> حفظ التغييرات
       </button>
@@ -1000,6 +1083,23 @@ export default function ProviderApp() {
   // ─── Render: Reports ─────────────────────────────────────────────────────
   const renderReports = () => {
     const completedBookings = bookings.filter(b => b.status === BookingStatus.COMPLETED);
+    const monthRevenue = completedBookings
+      .filter(b => {
+        const d = new Date(b.date);
+        const now = new Date();
+        return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+      })
+      .reduce((s, b) => s + b.servicePrice, 0);
+
+    // Build last-6-months chart from completed bookings
+    const revenueByMonth: Record<string, number> = {};
+    completedBookings.forEach(b => {
+      const d = new Date(b.date);
+      const key = d.toLocaleDateString('ar-SA', { month: 'short' });
+      revenueByMonth[key] = (revenueByMonth[key] || 0) + b.servicePrice;
+    });
+    const chartData = Object.entries(revenueByMonth).map(([month, revenue]) => ({ month, revenue })).slice(-6);
+
     return (
       <div className="space-y-6 pb-24">
         <div className="flex items-center gap-4">
@@ -1009,10 +1109,10 @@ export default function ProviderApp() {
 
         <div className="grid grid-cols-2 gap-4">
           {[
-            { label: 'إيرادات هذا الشهر', value: '4,200 ﷼', color: 'text-green-600', bg: 'bg-green-50' },
-            { label: 'إجمالي الحجوزات', value: String(bookings.length), color: 'text-orange-600', bg: 'bg-orange-50' },
+            { label: 'إيرادات هذا الشهر', value: `${monthRevenue.toLocaleString()} ﷼`, color: 'text-green-600', bg: 'bg-green-50' },
+            { label: 'إجمالي الحجوزات', value: String(bookings.length), color: 'text-[#C9956A]', bg: 'bg-[#FAF7F4]' },
             { label: 'معدل الإتمام', value: `${Math.round((completedBookings.length / (bookings.length || 1)) * 100)}%`, color: 'text-blue-600', bg: 'bg-blue-50' },
-            { label: 'متوسط التقييم', value: '4.9 ★', color: 'text-yellow-600', bg: 'bg-yellow-50' },
+            { label: 'إجمالي الأرباح', value: `${wallet.availableBalance.toLocaleString()} ﷼`, color: 'text-yellow-600', bg: 'bg-yellow-50' },
           ].map((s, i) => (
             <div key={i} className="p-4 bg-white rounded-3xl border border-gray-100 shadow-sm">
               <p className={`text-xs font-bold uppercase ${s.color} mb-1`}>{s.label}</p>
@@ -1021,27 +1121,29 @@ export default function ProviderApp() {
           ))}
         </div>
 
-        <div className="bg-white p-6 rounded-4xl border border-gray-100 shadow-sm">
-          <h3 className="font-bold mb-4">الإيرادات الشهرية</h3>
-          <div className="h-45">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={monthlyRevenue} barSize={28}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                <XAxis dataKey="month" tick={{ fontSize: 11, fontWeight: 700 }} axisLine={false} tickLine={false} />
-                <YAxis hide />
-                <Tooltip contentStyle={{ borderRadius: 12, border: 'none', boxShadow: '0 4px 20px rgba(0,0,0,.08)', fontSize: 12 }} formatter={(v: number) => [`${v} ﷼`, 'الإيرادات']} />
-                <Bar dataKey="revenue" fill="#f97316" radius={[8, 8, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
+        {chartData.length > 0 && (
+          <div className="bg-white p-6 rounded-4xl border border-gray-100 shadow-sm">
+            <h3 className="font-bold mb-4">الإيرادات الشهرية</h3>
+            <div className="h-45">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={chartData} barSize={28}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                  <XAxis dataKey="month" tick={{ fontSize: 11, fontWeight: 700 }} axisLine={false} tickLine={false} />
+                  <YAxis hide />
+                  <Tooltip contentStyle={{ borderRadius: 12, border: 'none', boxShadow: '0 4px 20px rgba(0,0,0,.08)', fontSize: 12 }} formatter={(v: number) => [`${v} ﷼`, 'الإيرادات']} />
+                  <Bar dataKey="revenue" fill="#f97316" radius={[8, 8, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
           </div>
-        </div>
+        )}
       </div>
     );
   };
 
   // ─── Return ──────────────────────────────────────────────────────────────
   return (
-    <div className="min-h-screen bg-[#F8F9FA] text-[#1A1A1A] font-sans" dir="rtl">
+    <div className="min-h-screen bg-[#FAF7F4] text-[#1C1410] font-sans" dir="rtl">
       <main className="px-5 pt-6">
         <AnimatePresence mode="wait">
           <motion.div
@@ -1054,13 +1156,13 @@ export default function ProviderApp() {
             {subView === 'hours' && renderWorkingHours()}
             {subView === 'store' && renderStoreInfo()}
             {subView === 'reports' && renderReports()}
-            {subView === 'wallet' && renderWallet()}
             {subView === 'messages' && renderMessages()}
             {subView === 'notifications' && renderNotifications()}
             {!subView && (
               <>
                 {activeTab === 'dashboard' && renderDashboard()}
                 {activeTab === 'bookings' && renderBookings()}
+                {activeTab === 'wallet' && renderWallet()}
                 {activeTab === 'services' && renderServices()}
                 {activeTab === 'customers' && renderCustomers()}
                 {activeTab === 'settings' && renderSettings()}
@@ -1071,28 +1173,26 @@ export default function ProviderApp() {
       </main>
 
       {/* Bottom Nav */}
-      <nav className="fixed bottom-0 left-0 right-0 bg-white/80 backdrop-blur-xl border-t border-gray-100 px-4 py-3 pb-8 flex justify-around items-center z-50">
+      <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-[#EDE8E2] px-6 pt-3 pb-8 flex justify-around items-center z-50">
         {bottomNavItems.map((item) => (
           <button
             key={item.id}
             onClick={() => { setActiveTab(item.id); setSubView(null); setActiveConversation(null); }}
-            className="relative flex flex-col items-center gap-1 group"
+            className="relative flex flex-col items-center gap-1"
           >
-            <div className={`p-2 rounded-2xl transition-all duration-300 ${
-              activeTab === item.id && !subView
-                ? 'bg-orange-600 text-white shadow-lg shadow-orange-200 -translate-y-1'
-                : 'text-gray-400 group-hover:bg-gray-50'
-            }`}>
-              <item.icon size={22} strokeWidth={activeTab === item.id && !subView ? 2.5 : 2} />
-            </div>
+            <item.icon
+              size={22}
+              strokeWidth={activeTab === item.id && !subView ? 2.5 : 1.8}
+              className={activeTab === item.id && !subView ? 'text-[#C9956A]' : 'text-[#8B7355]'}
+            />
             {item.id === 'bookings' && pendingCount > 0 && (
               <div className="absolute -top-0.5 right-0.5 w-4 h-4 bg-red-500 rounded-full text-white text-[9px] font-black flex items-center justify-center">
                 {pendingCount}
               </div>
             )}
-            <span className={`text-[10px] font-bold transition-all ${
-              activeTab === item.id && !subView ? 'text-orange-600 opacity-100' : 'text-gray-400 opacity-0'
-            }`}>{item.label}</span>
+            <span className={`text-[10px] font-bold ${activeTab === item.id && !subView ? 'text-[#C9956A]' : 'text-[#8B7355]'}`}>
+              {item.label}
+            </span>
           </button>
         ))}
       </nav>
@@ -1120,9 +1220,9 @@ export default function ProviderApp() {
             <form onSubmit={handleSubmit} className="space-y-4">
               {(showModal === 'add_service' || showModal === 'edit_service') && (
                 <>
-                  <input name="name" defaultValue={selectedItem?.name} placeholder="اسم الخدمة" required className="w-full bg-gray-50 border-none rounded-2xl px-4 py-4 font-bold focus:outline-none focus:ring-2 focus:ring-orange-400" />
-                  <input name="price" type="number" defaultValue={selectedItem?.price} placeholder="السعر (﷼)" required className="w-full bg-gray-50 border-none rounded-2xl px-4 py-4 font-bold focus:outline-none focus:ring-2 focus:ring-orange-400" />
-                  <input name="duration" type="number" defaultValue={selectedItem?.duration} placeholder="المدة بالدقائق" required className="w-full bg-gray-50 border-none rounded-2xl px-4 py-4 font-bold focus:outline-none focus:ring-2 focus:ring-orange-400" />
+                  <input name="name" defaultValue={selectedItem?.name} placeholder="اسم الخدمة" required className="w-full bg-gray-50 border-none rounded-2xl px-4 py-4 font-bold focus:outline-none focus:ring-2 focus:ring-[#C9956A]" />
+                  <input name="price" type="number" defaultValue={selectedItem?.price} placeholder="السعر (﷼)" required className="w-full bg-gray-50 border-none rounded-2xl px-4 py-4 font-bold focus:outline-none focus:ring-2 focus:ring-[#C9956A]" />
+                  <input name="duration" type="number" defaultValue={selectedItem?.duration} placeholder="المدة بالدقائق" required className="w-full bg-gray-50 border-none rounded-2xl px-4 py-4 font-bold focus:outline-none focus:ring-2 focus:ring-[#C9956A]" />
                 </>
               )}
               {showModal === 'add_customer' && (
@@ -1148,9 +1248,9 @@ export default function ProviderApp() {
               )}
               {showModal === 'request_payout' && (
                 <div className="space-y-4">
-                  <div className="p-4 bg-orange-50 rounded-2xl">
+                  <div className="p-4 bg-[#FAF7F4] rounded-2xl">
                     <p className="text-xs text-gray-500">الرصيد المتاح</p>
-                    <p className="text-2xl font-black text-orange-600">{wallet.availableBalance.toLocaleString()} ﷼</p>
+                    <p className="text-2xl font-black text-[#C9956A]">{wallet.availableBalance.toLocaleString()} ﷼</p>
                   </div>
                   <div>
                     <label className="text-xs font-bold text-gray-400 mb-1.5 block">رقم الآيبان (IBAN)</label>
@@ -1159,7 +1259,7 @@ export default function ProviderApp() {
                       onChange={e => setIbanInput(e.target.value)}
                       placeholder="SA03 8000 0000 6080 1016 7519"
                       required
-                      className="w-full bg-gray-50 border-none rounded-2xl px-4 py-4 font-bold focus:outline-none focus:ring-2 focus:ring-orange-400"
+                      className="w-full bg-gray-50 border-none rounded-2xl px-4 py-4 font-bold focus:outline-none focus:ring-2 focus:ring-[#C9956A]"
                       dir="ltr"
                     />
                   </div>
@@ -1172,18 +1272,18 @@ export default function ProviderApp() {
                       type="number"
                       max={wallet.availableBalance}
                       required
-                      className="w-full bg-gray-50 border-none rounded-2xl px-4 py-4 font-bold focus:outline-none focus:ring-2 focus:ring-orange-400"
+                      className="w-full bg-gray-50 border-none rounded-2xl px-4 py-4 font-bold focus:outline-none focus:ring-2 focus:ring-[#C9956A]"
                     />
                   </div>
                 </div>
               )}
               {showModal === 'confirm_service_complete' && (
                 <div className="text-center space-y-4 py-2">
-                  <div className="w-16 h-16 bg-orange-50 rounded-full flex items-center justify-center mx-auto">
-                    <CheckCircle size={32} className="text-orange-500" />
+                  <div className="w-16 h-16 bg-[#FAF7F4] rounded-full flex items-center justify-center mx-auto">
+                    <CheckCircle size={32} className="text-[#C9956A]" />
                   </div>
                   <p className="font-bold text-gray-700">هل أكملتِ تقديم الخدمة؟</p>
-                  <div className="p-4 bg-orange-50 rounded-2xl text-xs text-orange-700 font-bold text-right">
+                  <div className="p-4 bg-[#FAF7F4] rounded-2xl text-xs text-[#8B7355] font-bold text-right">
                     <AlertCircle size={14} className="inline ml-1" />
                     بعد تأكيد الطرفين، سيُضاف المبلغ لمحفظتك تلقائياً
                   </div>
@@ -1199,7 +1299,7 @@ export default function ProviderApp() {
               <button type="submit" className={`w-full py-5 rounded-3xl font-black text-white mt-2 ${
                 showModal === 'confirm_reject_booking' || showModal === 'confirm_delete_service'
                   ? 'bg-red-500'
-                  : 'bg-black'
+                  : 'bg-[#1C1410]'
               }`}>
                 {showModal === 'confirm_accept_booking' ? 'نعم، قبول' :
                  showModal === 'confirm_reject_booking' ? 'نعم، رفض' :
