@@ -347,9 +347,12 @@ export default function ProviderApp() {
         {/* Header */}
         <div className="flex items-center justify-between mb-5 pt-2">
           <div className="flex items-center gap-2">
-            <div className="w-10 h-10 rounded-full bg-white border border-[#EDE8E2] flex items-center justify-center">
+            <button
+              onClick={() => setSubView('notifications')}
+              className="w-10 h-10 rounded-full bg-white border border-[#EDE8E2] flex items-center justify-center hover:bg-[#FAF7F4] transition-colors active:scale-95"
+            >
               <Bell size={18} className="text-[#8B7355]" />
-            </div>
+            </button>
             <div className="w-10 h-10 rounded-full bg-[#C9956A] flex items-center justify-center text-white font-black text-base">
               {user?.name?.[0] || 'م'}
             </div>
@@ -752,6 +755,15 @@ export default function ProviderApp() {
           </div>
         )}
       </div>
+
+      {/* Availability / Working Hours */}
+      <button
+        onClick={() => setSubView('hours')}
+        className="w-full py-4 bg-white border border-[#EDE8E2] rounded-2xl text-[#1C1410] font-bold flex items-center justify-center gap-2 mb-4 hover:bg-[#FAF7F4] transition-colors"
+      >
+        <Clock size={18} />
+        أوقات العمل
+      </button>
 
       {/* Logout */}
       <button onClick={logout} className="w-full py-3.5 bg-white border border-[#EDE8E2] rounded-2xl text-red-500 font-bold flex items-center justify-center gap-2">
