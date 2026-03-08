@@ -75,6 +75,7 @@ export default function ProviderApp() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [dataLoading, setDataLoading] = useState(true);
   const [notifStatus, setNotifStatus] = useState<'idle' | 'loading' | 'enabled' | 'blocked'>('idle');
+  const [notifSettings, setNotifSettings] = useState({ bookingUpdates: true, messages: true, payments: true, reviews: true });
   const [providerRating, setProviderRating] = useState(0);
 
   const [storeInfo, setStoreInfo] = useState({
@@ -621,16 +622,95 @@ export default function ProviderApp() {
     </div>
   );
 
-  // ─── Render: Notifications ──────────────────────────────────────────────
-  const renderNotifications = () => (
+  // ─── Render: Notifications List (what bell icon shows) ──────────────────
+  const renderNotificationsList = () => {
+    const notifications = [
+      // New pending bookings
+      ...bookings.filter(b => b.status === BookingStatus.PENDING).map(b => ({
+        id: b.id,
+        type: 'booking',
+        title: 'حجز جديد',
+        message: `${b.customerName || 'عميلة'} تريد حجز ${b.serviceName}`,
+        time: new Date(b.date).toLocaleDateString('ar-SA'),
+        icon: Calendar,
+        action: () => { setActiveTab('bookings'); setSubView(null); },
+      })),
+      // Completed bookings (awaiting confirmation)
+      ...bookings.filter(b => b.status === BookingStatus.CONFIRMED && b.providerConfirmed && !b.clientConfirmed).slice(0, 2).map(b => ({
+        id: b.id,
+        type: 'completion',
+        title: 'بانتظار تأكيد العميلة',
+        message: `${b.customerName || 'عميلة'} - ${b.serviceName}`,
+        time: new Date(b.date).toLocaleDateString('ar-SA'),
+        icon: CheckCircle,
+        action: () => { setActiveTab('bookings'); setSubView(null); },
+      })),
+      // Recent payments
+      ...transactions.filter(t => t.type === 'CREDIT').slice(0, 3).map(t => ({
+        id: t.id,
+        type: 'payment',
+        title: 'إيراد جديد',
+        message: `تم استقبال ${t.amount} ريال`,
+        time: new Date(t.createdAt).toLocaleDateString('ar-SA'),
+        icon: TrendingUp,
+        action: () => { setActiveTab('wallet'); setSubView(null); },
+      })),
+    ].sort((a, b) => {
+      // Most recent first (simplified - all shown)
+      return 0;
+    }).slice(0, 10);
+
+    return (
+      <div className="space-y-4 pb-24">
+        <div className="flex items-center gap-4">
+          <button onClick={() => setSubView(null)} className="p-2 bg-white rounded-xl shadow-sm">
+            <ArrowLeft size={20} />
+          </button>
+          <h2 className="text-2xl font-black">التنبيهات</h2>
+        </div>
+
+        {notifications.length === 0 ? (
+          <div className="bg-white rounded-4xl border border-gray-100 shadow-sm p-8 text-center space-y-4">
+            <Bell size={40} className="mx-auto text-[#EDE8E2]" />
+            <p className="text-[#8B7355] font-bold">لا توجد تنبيهات حالياً</p>
+            <p className="text-xs text-[#8B7355]">ستظهر هنا الحجوزات الجديدة والدفعات والرسائل</p>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {notifications.map(notif => (
+              <button
+                key={notif.id}
+                onClick={notif.action}
+                className="w-full bg-white rounded-3xl border border-[#EDE8E2] p-4 flex items-start gap-3 text-right hover:bg-[#FAF7F4] transition-colors shadow-sm active:scale-[0.98]"
+              >
+                <div className="w-10 h-10 rounded-full bg-[#FAF7F4] flex items-center justify-center shrink-0">
+                  <notif.icon size={18} className="text-[#C9956A]" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <h3 className="font-black text-sm text-[#1C1410]">{notif.title}</h3>
+                  <p className="text-xs text-[#8B7355] mt-0.5 line-clamp-2">{notif.message}</p>
+                  <p className="text-[10px] text-[#8B7355] mt-1 opacity-60">{notif.time}</p>
+                </div>
+                <ChevronRight size={16} className="text-[#8B7355] shrink-0 mt-1" />
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  // ─── Render: Notification Settings (in account) ───────────────────────
+  const renderNotificationSettings = () => (
     <div className="space-y-6 pb-24">
       <div className="flex items-center gap-4">
         <button onClick={() => setSubView(null)} className="p-2 bg-white rounded-xl shadow-sm">
           <ArrowLeft size={20} />
         </button>
-        <h2 className="text-2xl font-black">التنبيهات</h2>
+        <h2 className="text-2xl font-black">إعدادات التنبيهات</h2>
       </div>
 
+      {/* Push Notifications Setup */}
       <div className="bg-white rounded-4xl border border-gray-100 shadow-sm p-6 text-center space-y-5">
         <div className="w-16 h-16 bg-[#FAF7F4] rounded-2xl flex items-center justify-center mx-auto">
           <Bell size={28} className="text-[#C9956A]" />
@@ -661,6 +741,31 @@ export default function ProviderApp() {
             {notifStatus === 'loading' ? 'جارٍ التفعيل...' : '🔔 تفعيل التنبيهات'}
           </button>
         )}
+      </div>
+
+      {/* Toggle settings */}
+      <div className="bg-white rounded-3xl border border-[#EDE8E2] overflow-hidden">
+        <div className="px-6 py-4 border-b border-[#EDE8E2]">
+          <h3 className="font-black text-sm text-[#1C1410]">نوع التنبيهات</h3>
+        </div>
+        <div className="space-y-0">
+          {[
+            { key: 'bookingUpdates', label: 'تحديثات الحجوزات' },
+            { key: 'messages', label: 'الرسائل' },
+            { key: 'payments', label: 'الدفعات' },
+            { key: 'reviews', label: 'التقييمات' },
+          ].map((item, i) => (
+            <div key={item.key} className={`flex items-center justify-between px-6 py-3 ${i < 3 ? 'border-b border-[#EDE8E2]' : ''}`}>
+              <div
+                onClick={() => setNotifSettings(prev => ({ ...prev, [item.key]: !prev[item.key as keyof typeof notifSettings] }))}
+                className={`w-11 h-6 rounded-full flex items-center cursor-pointer transition-colors ${notifSettings[item.key as keyof typeof notifSettings] ? 'bg-[#C9956A] justify-end pr-1' : 'bg-[#EDE8E2] justify-start pl-1'}`}
+              >
+                <div className="w-4 h-4 bg-white rounded-full shadow" />
+              </div>
+              <label className="font-bold text-sm text-[#1C1410] cursor-pointer">{item.label}</label>
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );
@@ -763,6 +868,15 @@ export default function ProviderApp() {
       >
         <Clock size={18} />
         أوقات العمل
+      </button>
+
+      {/* Notification Settings */}
+      <button
+        onClick={() => setSubView('notification-settings')}
+        className="w-full py-4 bg-white border border-[#EDE8E2] rounded-2xl text-[#1C1410] font-bold flex items-center justify-center gap-2 mb-4 hover:bg-[#FAF7F4] transition-colors"
+      >
+        <Bell size={18} />
+        إعدادات التنبيهات
       </button>
 
       {/* Logout */}
@@ -1169,7 +1283,8 @@ export default function ProviderApp() {
             {subView === 'store' && renderStoreInfo()}
             {subView === 'reports' && renderReports()}
             {subView === 'messages' && renderMessages()}
-            {subView === 'notifications' && renderNotifications()}
+            {subView === 'notifications' && renderNotificationsList()}
+            {subView === 'notification-settings' && renderNotificationSettings()}
             {!subView && (
               <>
                 {activeTab === 'dashboard' && renderDashboard()}
