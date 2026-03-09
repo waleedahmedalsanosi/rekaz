@@ -34,6 +34,9 @@ export default function ClientApp() {
   const [bookingsTab, setBookingsTab] = useState<'upcoming' | 'completed' | 'cancelled'>('upcoming');
   const [browseFilter, setBrowseFilter] = useState<string>('الكل');
   const [showNotifications, setShowNotifications] = useState(false);
+  const [readNotifIds, setReadNotifIds] = useState<string[]>(() =>
+    JSON.parse(localStorage.getItem('ziena_read_notifs') || '[]')
+  );
   const [accountSubView, setAccountSubView] = useState<
     'addresses' | 'add-address' | 'edit-address' |
     'payment'   | 'add-payment' | 'edit-payment' |
@@ -46,6 +49,9 @@ export default function ClientApp() {
   // Language + notifications + payment/address state
   const [language, setLanguage] = useState<'ar' | 'en'>(
     () => (localStorage.getItem('ziena_lang') as 'ar' | 'en') || 'ar'
+  );
+  const [favorites, setFavorites] = useState<string[]>(() =>
+    JSON.parse(localStorage.getItem('ziena_favorites') || '[]')
   );
   const [notifSettings, setNotifSettings] = useState({
     bookingUpdates: true, messages: true, promotions: false, reminders: true,
@@ -213,6 +219,15 @@ export default function ClientApp() {
     setDisputeReason('');
     setProfileName('');
     setProfilePhone('');
+  };
+
+  const toggleFavorite = (providerId: string) => {
+    const newFavorites = favorites.includes(providerId)
+      ? favorites.filter(id => id !== providerId)
+      : [...favorites, providerId];
+    setFavorites(newFavorites);
+    localStorage.setItem('ziena_favorites', JSON.stringify(newFavorites));
+    toast(newFavorites.includes(providerId) ? 'أضفت للمفضلة ❤️' : 'أزلت من المفضلة', 'info');
   };
 
   const checkAvailability = async () => {
@@ -917,13 +932,14 @@ export default function ClientApp() {
   // ─── Render: Notifications (Paper 22) ────────────────────────────────────
   const renderNotifications = () => {
     const mockNotifications = [
-      { id: 'n1', group: 'اليوم', icon: 'calendar', title: 'تأكيد الحجز', desc: 'تم قبول حجزك مع رنا مكياج يوم الخميس الساعة 4 مساءً', time: 'منذ ساعتين', read: false },
-      { id: 'n2', group: 'اليوم', icon: 'star', title: 'تذكير بموعدك', desc: 'حجزك مع ليلى للشعر غداً الساعة 3 مساءً', time: 'منذ 4 ساعات', read: false },
-      { id: 'n3', group: 'أمس', icon: 'check', title: 'اكتمل حجزك', desc: 'تم إكمال خدمة مكياج سهرة بنجاح. قيّمي تجربتك!', time: 'أمس 7:00 م', read: true },
-      { id: 'n4', group: 'أمس', icon: 'message', title: 'رسالة جديدة', desc: 'أرسلت رنا رسالة: "تفضلي، موعدك مؤكد إن شاء الله"', time: 'أمس 5:30 م', read: true },
-      { id: 'n5', group: 'هذا الأسبوع', icon: 'offer', title: 'عرض خاص لكِ', desc: 'خصم 20% على خدمات الشعر هذا الأسبوع فقط!', time: 'الثلاثاء 2:00 م', read: true },
+      { id: 'n1', group: 'اليوم', icon: 'calendar', title: 'تأكيد الحجز', desc: 'تم قبول حجزك مع رنا مكياج يوم الخميس الساعة 4 مساءً', time: 'منذ ساعتين' },
+      { id: 'n2', group: 'اليوم', icon: 'star', title: 'تذكير بموعدك', desc: 'حجزك مع ليلى للشعر غداً الساعة 3 مساءً', time: 'منذ 4 ساعات' },
+      { id: 'n3', group: 'أمس', icon: 'check', title: 'اكتمل حجزك', desc: 'تم إكمال خدمة مكياج سهرة بنجاح. قيّمي تجربتك!', time: 'أمس 7:00 م' },
+      { id: 'n4', group: 'أمس', icon: 'message', title: 'رسالة جديدة', desc: 'أرسلت رنا رسالة: "تفضلي، موعدك مؤكد إن شاء الله"', time: 'أمس 5:30 م' },
+      { id: 'n5', group: 'هذا الأسبوع', icon: 'offer', title: 'عرض خاص لكِ', desc: 'خصم 20% على خدمات الشعر هذا الأسبوع فقط!', time: 'الثلاثاء 2:00 م' },
     ];
-    const groups = [...new Set(mockNotifications.map(n => n.group))];
+    const notificationsWithRead = mockNotifications.map(n => ({ ...n, read: readNotifIds.includes(n.id) }));
+    const groups = [...new Set(notificationsWithRead.map(n => n.group))];
     const iconEl = (icon: string) => {
       const base = "w-10 h-10 rounded-2xl flex items-center justify-center shrink-0";
       if (icon === 'calendar') return <div className={`${base} bg-[#C9956A]/15`}><Calendar size={18} className="text-[#C9956A]" /></div>;
@@ -932,11 +948,17 @@ export default function ClientApp() {
       if (icon === 'message') return <div className={`${base} bg-blue-50`}><MessageSquare size={18} className="text-blue-500" /></div>;
       return <div className={`${base} bg-[#FAF7F4]`}><Bell size={18} className="text-[#8B7355]" /></div>;
     };
+    const markAllRead = () => {
+      const allIds = mockNotifications.map(n => n.id);
+      setReadNotifIds(allIds);
+      localStorage.setItem('ziena_read_notifs', JSON.stringify(allIds));
+      toast('تم تحديد الكل مقروء ✓', 'success');
+    };
     return (
       <div className="fixed inset-0 z-50 bg-[#FAF7F4]" dir="rtl">
         {/* Header */}
         <div className="bg-white border-b border-[#EDE8E2] px-5 pt-12 pb-4 flex items-center justify-between">
-          <button onClick={() => toast('تم تحديد الكل مقروء', 'info')} className="text-xs text-[#C9956A] font-bold">تحديد الكل مقروء</button>
+          <button onClick={markAllRead} className="text-xs text-[#C9956A] font-bold">تحديد الكل مقروء</button>
           <h1 className="text-xl font-black text-[#1C1410]">الإشعارات</h1>
           <button onClick={() => setShowNotifications(false)} className="p-2 rounded-full bg-[#FAF7F4]">
             <X size={18} className="text-[#1C1410]" />
@@ -948,7 +970,7 @@ export default function ClientApp() {
             <div key={group} className="mb-5">
               <p className="text-xs font-black text-[#8B7355] mb-2 text-right">{group}</p>
               <div className="space-y-2">
-                {mockNotifications.filter(n => n.group === group).map(n => (
+                {notificationsWithRead.filter(n => n.group === group).map(n => (
                   <div key={n.id} className={`bg-white rounded-3xl border p-4 flex items-start gap-3 ${n.read ? 'border-[#EDE8E2]' : 'border-[#C9956A]/30'}`}>
                     {iconEl(n.icon)}
                     <div className="flex-1 min-w-0 text-right">
@@ -1428,8 +1450,8 @@ export default function ClientApp() {
             <h3 className="font-black text-base mb-1">تواصلي معنا</h3>
             <p className="text-sm text-white/60 mb-4">فريق الدعم متاح 7 أيام في الأسبوع</p>
             <div className="space-y-2">
-              <button onClick={() => toast('support@ziena.sa', 'info')} className="w-full py-3 bg-white/10 rounded-2xl text-sm font-bold">البريد: support@ziena.sa</button>
-              <button onClick={() => toast('واتساب: 920000000', 'info')} className="w-full py-3 bg-[#C9956A] rounded-2xl text-sm font-bold">واتساب الدعم</button>
+              <button onClick={() => window.open('mailto:support@ziena.sa')} className="w-full py-3 bg-white/10 rounded-2xl text-sm font-bold">البريد: support@ziena.sa</button>
+              <button onClick={() => window.open('https://wa.me/966920000000')} className="w-full py-3 bg-[#C9956A] rounded-2xl text-sm font-bold">واتساب الدعم</button>
             </div>
           </div>
           <p className="text-xs font-black text-[#8B7355] mb-3 text-right">الأسئلة الشائعة</p>
@@ -1554,10 +1576,10 @@ export default function ClientApp() {
           {/* Top action bar */}
           <div className="flex items-center justify-between px-5 pt-12 pb-0">
             <button
-              onClick={() => toast('أضفت للمفضلة', 'info')}
+              onClick={() => toggleFavorite(selectedProvider!.id)}
               className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center"
             >
-              <Heart size={18} className="text-white" />
+              <Heart size={18} className={favorites.includes(selectedProvider!.id) ? 'text-red-500 fill-red-500' : 'text-white'} />
             </button>
             <button
               onClick={() => setSelectedProvider(null)}

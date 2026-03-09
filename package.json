@@ -12,9 +12,18 @@
     "start:prod": "tsx server/index.ts",
     "preview": "vite preview",
     "clean": "rm -rf dist",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "cap:init": "npx cap init",
+    "cap:add": "npx cap add android",
+    "cap:sync": "npx cap sync android",
+    "cap:build:apk": "npm run build && npx cap copy android",
+    "cap:build:debug": "npm run cap:build:apk && cd android && ./gradlew assembleDebug",
+    "cap:build:release": "npm run cap:build:apk && cd android && ./gradlew assembleRelease"
   },
   "dependencies": {
+    "@capacitor/android": "^8.2.0",
+    "@capacitor/cli": "^8.2.0",
+    "@capacitor/core": "^8.2.0",
     "@google/genai": "^1.29.0",
     "@libsql/client": "^0.17.0",
     "@sentry/node": "^10.42.0",

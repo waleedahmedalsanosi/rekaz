@@ -9,7 +9,7 @@ import {
   ResponsiveContainer, Tooltip, LineChart, Line, CartesianGrid, XAxis, YAxis,
 } from 'recharts';
 import { SUBSCRIPTION_PLANS } from '../../lib/mockData';
-import { api, ApiProvider, ApiDispute, ApiPayoutRequest, ApiAdminStats } from '../../lib/api';
+import { api, ApiProvider, ApiDispute, ApiPayoutRequest, ApiAdminStats, ApiBooking } from '../../lib/api';
 import { useToast } from '../../components/Toast';
 import { useAuth } from '../../contexts/AuthContext';
 
@@ -29,6 +29,7 @@ export default function AdminApp() {
   const [loading, setLoading] = useState(true);
   const [providerSearch, setProviderSearch] = useState('');
   const [selectedProvider, setSelectedProvider] = useState<ApiProvider | null>(null);
+  const [adminBookings, setAdminBookings] = useState<ApiBooking[]>([]);
 
   useEffect(() => {
     loadAll();
@@ -37,18 +38,20 @@ export default function AdminApp() {
   async function loadAll() {
     setLoading(true);
     try {
-      const [s, d, p, prov, rev] = await Promise.all([
+      const [s, d, p, prov, rev, bookings] = await Promise.all([
         api.admin.stats(),
         api.admin.disputes(),
         api.admin.payouts(),
         api.admin.providers(),
         api.admin.revenue(),
+        api.bookings.list(),
       ]);
       setStats(s);
       setDisputes(d);
       setPayouts(p);
       setProviders(prov);
       setRevenueData(rev.map(r => ({ date: r.date, revenue: r.revenue })));
+      setAdminBookings(bookings);
     } catch (e: any) {
       toast(e.message || 'خطأ في تحميل البيانات', 'error');
     } finally {
@@ -60,11 +63,11 @@ export default function AdminApp() {
   const pendingPayoutsCount = payouts.filter(p => p.status === 'PENDING').length;
 
   const bottomNavItems = [
-    { id: 'dashboard', label: 'لوحة التحكم', icon: TrendingUp },
-    { id: 'bookings_admin', label: 'الحجوزات', icon: Calendar },
-    { id: 'providers', label: 'المتخصصات', icon: Users },
-    { id: 'disputes', label: 'النزاعات', icon: AlertCircle },
-    { id: 'payouts', label: 'السحوبات', icon: Wallet },
+    { id: 'dashboard', label: 'لوحة التحكم', icon: TrendingUp, badge: 0 },
+    { id: 'bookings_admin', label: 'الحجوزات', icon: Calendar, badge: 0 },
+    { id: 'providers', label: 'المتخصصات', icon: Users, badge: 0 },
+    { id: 'disputes', label: 'النزاعات', icon: AlertCircle, badge: openDisputesCount },
+    { id: 'payouts', label: 'السحوبات', icon: Wallet, badge: pendingPayoutsCount },
   ];
 
   const toggleVerification = async (providerId: string) => {
@@ -231,13 +234,6 @@ export default function AdminApp() {
 
   // ─── Real Bookings View ──────────────────────────────────────────────────
   const renderBookings = () => {
-    // Mock bookings data - in real app would come from API
-    const allBookings = [
-      { id: 'b1', clientName: 'فاطمة', providerName: 'ليلى أحمد', service: 'مكياج سهرة', date: '2026-03-10', time: '5:00 PM', price: 250, status: 'COMPLETED' },
-      { id: 'b2', clientName: 'نورا', providerName: 'ريم محمد', service: 'تصفيف شعر', date: '2026-03-09', time: '3:00 PM', price: 150, status: 'CONFIRMED' },
-      { id: 'b3', clientName: 'سارة', providerName: 'ليلى أحمد', service: 'عناية بشرة', date: '2026-03-11', time: '4:30 PM', price: 180, status: 'PENDING' },
-      { id: 'b4', clientName: 'هند', providerName: 'منال', service: 'مكياج يومي', date: '2026-03-08', time: '2:00 PM', price: 100, status: 'COMPLETED' },
-    ];
     const statusColors: Record<string, string> = {
       COMPLETED: 'bg-green-50 text-green-700',
       CONFIRMED: 'bg-blue-50 text-blue-700',
@@ -248,14 +244,14 @@ export default function AdminApp() {
       <div className="pb-28">
         <div className="text-right mb-5 pt-2">
           <h1 className="text-3xl font-black text-[#1C1410]">الحجوزات</h1>
-          <p className="text-sm text-[#8B7355] mt-0.5">{allBookings.length} حجز</p>
+          <p className="text-sm text-[#8B7355] mt-0.5">{adminBookings.length} حجز</p>
         </div>
         <div className="space-y-3">
-          {allBookings.map((booking) => (
+          {adminBookings.map((booking) => (
             <div key={booking.id} className="bg-white rounded-3xl border border-[#EDE8E2] p-4 shadow-sm">
               <div className="flex items-start justify-between mb-3">
                 <div>
-                  <h4 className="font-black text-sm text-[#1C1410]">{booking.service}</h4>
+                  <h4 className="font-black text-sm text-[#1C1410]">{booking.serviceName}</h4>
                   <p className="text-xs text-[#8B7355] mt-1">{booking.clientName} ← {booking.providerName}</p>
                 </div>
                 <span className={`text-[10px] font-black px-2.5 py-1 rounded-full ${statusColors[booking.status] || 'bg-gray-50 text-gray-700'}`}>
@@ -263,8 +259,8 @@ export default function AdminApp() {
                 </span>
               </div>
               <div className="flex items-center justify-between text-xs text-[#8B7355]">
-                <span>{booking.date} · {booking.time}</span>
-                <span className="font-black text-[#1C1410]">{booking.price} ريال</span>
+                <span>{new Date(booking.scheduledDate).toLocaleDateString('ar-SA')} · {booking.scheduledTime}</span>
+                <span className="font-black text-[#1C1410]">{booking.servicePrice} ريال</span>
               </div>
             </div>
           ))}
@@ -649,8 +645,8 @@ export default function AdminApp() {
   // ─── Settings ─────────────────────────────────────────────────────────────
   const renderSettings = () => {
     const settingsItems = [
-      { id: 'billing', label: 'إدارة الباقات', icon: CreditCard },
-      { id: 'reports', label: 'تقارير المنصة', icon: PieChart },
+      { id: 'billing', label: 'إدارة الباقات', icon: CreditCard, badge: 0 },
+      { id: 'reports', label: 'تقارير المنصة', icon: PieChart, badge: 0 },
     ];
 
     return (

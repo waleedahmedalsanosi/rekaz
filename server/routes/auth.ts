@@ -80,9 +80,11 @@ router.post('/send-otp', async (req, res) => {
     } else {
       // Fallback: random 4-digit code printed to console (dev / OTPless not configured)
       // Demo phones always get code 1234 for easy testing
-      const DEMO_PHONES = ['0555123456', '0501234567', '0555234567', '0555345678'];
+      const DEMO_PHONES = ['+966582314924', '0582314924', '966582314924', '0555123456', '0501234567', '0555234567', '0555345678'];
       const code = DEMO_PHONES.includes(phone) ? '1234' : Math.floor(1000 + Math.random() * 9000).toString();
-      console.log(`[OTP] Phone: ${phone} → Code: ${code}`);
+      if (process.env.NODE_ENV !== 'production') {
+        console.log(`[OTP] Phone: ${phone} → Code: ${code}`);
+      }
       await db.prepare('INSERT OR REPLACE INTO otp_codes (phone, code, expires_at) VALUES (?,?,?)').run(phone, code, expiresAt);
       res.json({ success: true, message: 'تم إرسال رمز التحقق', via: 'console' });
     }

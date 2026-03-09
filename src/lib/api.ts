@@ -1,5 +1,7 @@
 // Frontend API client — talks to Express backend on port 3001 via Vite proxy
-const BASE = '/api';
+// Dev:  requests go to /api which Vite proxies to http://localhost:3001
+// Prod: VITE_API_BASE_URL is set at build time for Capacitor APK (file:// cannot use relative URLs)
+const BASE = import.meta.env.VITE_API_BASE_URL || '/api';
 
 let _token: string | null = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
 

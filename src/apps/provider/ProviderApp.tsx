@@ -73,10 +73,14 @@ export default function ProviderApp() {
   const [ibanInput, setIbanInput] = useState('');
   const [payoutAmount, setPayoutAmount] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const avatarInputRef = useRef<HTMLInputElement>(null);
   const [dataLoading, setDataLoading] = useState(true);
   const [notifStatus, setNotifStatus] = useState<'idle' | 'loading' | 'enabled' | 'blocked'>('idle');
   const [notifSettings, setNotifSettings] = useState({ bookingUpdates: true, messages: true, payments: true, reviews: true });
   const [providerRating, setProviderRating] = useState(0);
+  const [avatarImage, setAvatarImage] = useState<string>(() =>
+    localStorage.getItem('ziena_avatar') || 'https://picsum.photos/seed/provider/100/100'
+  );
 
   const [storeInfo, setStoreInfo] = useState({
     name: user?.name || '',
@@ -1109,6 +1113,17 @@ export default function ProviderApp() {
     </div>
   );
 
+  const handleAvatarUpload = (file: File) => {
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const base64 = reader.result as string;
+      setAvatarImage(base64);
+      localStorage.setItem('ziena_avatar', base64);
+      toast('تم تحديث صورة الملف الشخصي ✓');
+    };
+    reader.readAsDataURL(file);
+  };
+
   // ─── Render: Store Info ──────────────────────────────────────────────────
   const renderStoreInfo = () => (
     <div className="space-y-6 pb-24">
@@ -1120,14 +1135,21 @@ export default function ProviderApp() {
       <div className="flex justify-center">
         <button
           type="button"
-          onClick={() => toast('رفع الصور قريباً ✨', 'info')}
+          onClick={() => avatarInputRef.current?.click()}
           className="relative w-24 h-24 rounded-3xl overflow-hidden border-4 border-[#EDE8E2] shadow-sm"
         >
-          <img src="https://picsum.photos/seed/provider/100/100" className="w-full h-full object-cover" alt="" />
+          <img src={avatarImage} className="w-full h-full object-cover" alt="" />
           <div className="absolute inset-0 bg-black/30 flex items-center justify-center">
             <Camera size={20} className="text-white" />
           </div>
         </button>
+        <input
+          ref={avatarInputRef}
+          type="file"
+          accept="image/*"
+          onChange={e => e.target.files?.[0] && handleAvatarUpload(e.target.files[0])}
+          className="hidden"
+        />
       </div>
 
       <div className="space-y-4">
