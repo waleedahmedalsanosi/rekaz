@@ -11,6 +11,7 @@ import { BookingStatus, PaymentStatus } from '../../lib/types';
 import { useToast } from '../../components/Toast';
 import { api, dotnetApi, MoyasarSource, DotNetMerchantDto, DotNetMerchantAvailabilityDto, DotNetAvailabilityResponseDto, ApiProvider, ApiService, ApiBooking, ApiConversation, ApiMessage, ApiReview } from '../../lib/api';
 import { useAuth } from '../../contexts/AuthContext';
+import { EmptyState, LoadingSkeleton, Button, FormError } from '../../components/DesignSystem';
 
 const CATEGORIES = ['الكل', 'مكياج', 'شعر', 'عناية'];
 const COMMISSION_RATE = 0.02;
@@ -682,9 +683,11 @@ export default function ClientApp() {
             <button
               key={tab}
               onClick={() => setBookingsTab(tab)}
-              className={`flex-1 py-2 text-sm font-bold rounded-xl transition-all ${
+              className={`flex-1 py-2 text-sm font-bold rounded-xl transition-all focus:ring-2 focus:ring-[#C9956A] ${
                 bookingsTab === tab ? 'bg-[#1C1410] text-white' : 'text-[#8B7355]'
               }`}
+              aria-label={['حجوزاتي القادمة', 'حجوزاتي المكتملة', 'حجوزاتي الملغاة'][i]}
+              aria-pressed={bookingsTab === tab}
             >
               {['القادمة', 'المكتملة', 'الملغاة'][i]}
             </button>
@@ -692,11 +695,14 @@ export default function ClientApp() {
         </div>
 
         {/* Booking cards */}
-        {tabBookings.length === 0 ? (
-          <div className="py-16 text-center">
-            <Calendar size={40} className="mx-auto text-[#EDE8E2] mb-3" />
-            <p className="text-[#8B7355] font-bold">لا توجد حجوزات</p>
-          </div>
+        {dataLoading ? (
+          <LoadingSkeleton count={3} />
+        ) : tabBookings.length === 0 ? (
+          <EmptyState
+            title={bookingsTab === 'upcoming' ? 'لا توجد حجوزات قادمة' : bookingsTab === 'completed' ? 'لا توجد حجوزات مكتملة' : 'لا توجد حجوزات ملغاة'}
+            description="ابدئي بحجز خدمة جديدة"
+            action={bookingsTab === 'upcoming' ? <Button onClick={() => setActiveTab('dashboard')}>استكشفي الخدمات</Button> : undefined}
+          />
         ) : (
           <div className="space-y-3">
             {tabBookings.map((booking) => {

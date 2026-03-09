@@ -14,6 +14,7 @@ import { BookingStatus, UserRole, PaymentStatus } from '../../lib/types';
 import { useToast } from '../../components/Toast';
 import { api, dotnetApi, ApiBooking, ApiService, ApiTransaction, ApiConversation, ApiMessage, DotNetWalletDto, DotNetPushSubscriptionDto } from '../../lib/api';
 import { useAuth } from '../../contexts/AuthContext';
+import { EmptyState, LoadingSkeleton, Button } from '../../components/DesignSystem';
 
 const salesData = [
   { name: '22 Feb', sales: 400 },
@@ -455,9 +456,11 @@ export default function ProviderApp() {
             <button
               key={tab}
               onClick={() => setProvBookingsTab(tab)}
-              className={`flex-1 py-2 text-sm font-bold rounded-xl transition-all relative ${
+              className={`flex-1 py-2 text-sm font-bold rounded-xl transition-all relative focus:ring-2 focus:ring-[#C9956A] ${
                 provBookingsTab === tab ? 'bg-[#1C1410] text-white' : 'text-[#8B7355]'
               }`}
+              aria-label={['حجوزات جديدة', 'حجوزات قادمة', 'حجوزات مكتملة'][i]}
+              aria-pressed={provBookingsTab === tab}
             >
               {['جديدة', 'قادمة', 'مكتملة'][i]}
               {tab === 'new' && newBookings.length > 0 && (
@@ -469,11 +472,13 @@ export default function ProviderApp() {
           ))}
         </div>
 
-        {tabBookings.length === 0 ? (
-          <div className="py-16 text-center">
-            <Calendar size={40} className="mx-auto text-[#EDE8E2] mb-3" />
-            <p className="text-[#8B7355] font-bold">لا توجد حجوزات</p>
-          </div>
+        {dataLoading ? (
+          <LoadingSkeleton count={3} />
+        ) : tabBookings.length === 0 ? (
+          <EmptyState
+            title={provBookingsTab === 'new' ? 'لا توجد حجوزات جديدة' : provBookingsTab === 'upcoming' ? 'لا توجد حجوزات قادمة' : 'لا توجد حجوزات مكتملة'}
+            description="ستظهر الحجوزات هنا عندما يقوم العملاء بالحجز"
+          />
         ) : (
           <div className="space-y-3">
             {tabBookings.map(booking => {

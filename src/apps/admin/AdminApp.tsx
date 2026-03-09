@@ -12,6 +12,7 @@ import { SUBSCRIPTION_PLANS } from '../../lib/mockData';
 import { api, ApiProvider, ApiDispute, ApiPayoutRequest, ApiAdminStats, ApiBooking } from '../../lib/api';
 import { useToast } from '../../components/Toast';
 import { useAuth } from '../../contexts/AuthContext';
+import { EmptyState, LoadingSkeleton, Button } from '../../components/DesignSystem';
 
 export default function AdminApp() {
   const { toast } = useToast();
@@ -246,25 +247,34 @@ export default function AdminApp() {
           <h1 className="text-3xl font-black text-[#1C1410]">الحجوزات</h1>
           <p className="text-sm text-[#8B7355] mt-0.5">{adminBookings.length} حجز</p>
         </div>
-        <div className="space-y-3">
-          {adminBookings.map((booking) => (
-            <div key={booking.id} className="bg-white rounded-3xl border border-[#EDE8E2] p-4 shadow-sm">
-              <div className="flex items-start justify-between mb-3">
-                <div>
-                  <h4 className="font-black text-sm text-[#1C1410]">{booking.serviceName}</h4>
-                  <p className="text-xs text-[#8B7355] mt-1">{booking.clientName} ← {booking.providerName}</p>
+        {loading ? (
+          <LoadingSkeleton count={3} />
+        ) : adminBookings.length === 0 ? (
+          <EmptyState
+            title="لا توجد حجوزات"
+            description="لم تكن هناك حجوزات بعد. عندما يقوم العملاء بالحجز، ستظهر هنا."
+          />
+        ) : (
+          <div className="space-y-3">
+            {adminBookings.map((booking) => (
+              <div key={booking.id} className="bg-white rounded-3xl border border-[#EDE8E2] p-4 shadow-sm">
+                <div className="flex items-start justify-between mb-3">
+                  <div>
+                    <h4 className="font-black text-sm text-[#1C1410]">{booking.serviceName}</h4>
+                    <p className="text-xs text-[#8B7355] mt-1">{booking.clientName} ← {booking.providerName}</p>
+                  </div>
+                  <span className={`text-[10px] font-black px-2.5 py-1 rounded-full ${statusColors[booking.status] || 'bg-gray-50 text-gray-700'}`}>
+                    {booking.status === 'COMPLETED' ? 'مكتمل' : booking.status === 'CONFIRMED' ? 'مؤكد' : booking.status === 'PENDING' ? 'معلق' : 'ملغي'}
+                  </span>
                 </div>
-                <span className={`text-[10px] font-black px-2.5 py-1 rounded-full ${statusColors[booking.status] || 'bg-gray-50 text-gray-700'}`}>
-                  {booking.status === 'COMPLETED' ? 'مكتمل' : booking.status === 'CONFIRMED' ? 'مؤكد' : booking.status === 'PENDING' ? 'معلق' : 'ملغي'}
-                </span>
+                <div className="flex items-center justify-between text-xs text-[#8B7355]">
+                  <span>{new Date(booking.scheduledDate).toLocaleDateString('ar-SA')} · {booking.scheduledTime}</span>
+                  <span className="font-black text-[#1C1410]">{booking.servicePrice} ريال</span>
+                </div>
               </div>
-              <div className="flex items-center justify-between text-xs text-[#8B7355]">
-                <span>{new Date(booking.scheduledDate).toLocaleDateString('ar-SA')} · {booking.scheduledTime}</span>
-                <span className="font-black text-[#1C1410]">{booking.servicePrice} ريال</span>
-              </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        )}
       </div>
     );
   };
@@ -285,9 +295,18 @@ export default function AdminApp() {
         onChange={e => setProviderSearch(e.target.value)}
         placeholder="ابحثي باسم أو تخصص..."
         className="w-full bg-white border border-[#EDE8E2] rounded-2xl px-4 py-3.5 text-sm text-right focus:outline-none focus:ring-2 focus:ring-[#C9956A] shadow-sm mb-4"
+        aria-label="ابحثي عن متخصصة باسم أو تخصص"
       />
-      <div className="space-y-3">
-        {filteredProviders.map((provider) => (
+      {loading ? (
+        <LoadingSkeleton count={3} />
+      ) : filteredProviders.length === 0 ? (
+        <EmptyState
+          title={providerSearch ? 'لم يتم العثور على نتائج' : 'لا توجد متخصصات'}
+          description={providerSearch ? `لا توجد متخصصات تطابق "${providerSearch}"` : 'لا توجد متخصصات مسجلة بعد.'}
+        />
+      ) : (
+        <div className="space-y-3">
+          {filteredProviders.map((provider) => (
           <button key={provider.id} onClick={() => setSelectedProvider(provider)} className="w-full text-right bg-white rounded-3xl border border-[#EDE8E2] p-4 shadow-sm hover:bg-[#FAF7F4] transition-colors active:scale-[0.98]">
             <div className="flex items-center gap-3 mb-3">
               <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-[#C4A882] to-[#A07850] flex items-center justify-center text-white font-black text-lg shrink-0">
@@ -325,7 +344,8 @@ export default function AdminApp() {
             </div>
           </button>
         ))}
-      </div>
+        </div>
+      )}
     </div>
     );
   };

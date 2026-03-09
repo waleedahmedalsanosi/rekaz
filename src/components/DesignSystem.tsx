@@ -1,17 +1,19 @@
 import React from 'react';
-import { 
-  Star, 
-  CheckCircle, 
-  AlertCircle, 
-  Clock, 
-  Calendar, 
-  User, 
+import {
+  Star,
+  CheckCircle,
+  AlertCircle,
+  Clock,
+  Calendar,
+  User,
   ArrowLeft,
   Search,
   Plus,
   ChevronRight,
   RefreshCw,
-  CreditCard
+  CreditCard,
+  Inbox,
+  AlertTriangle
 } from 'lucide-react';
 
 /**
@@ -80,34 +82,41 @@ export const tokens = {
  * Reusable UI Components based on the Design System
  */
 
-export const Button = ({ 
-  children, 
-  variant = 'primary', 
-  size = 'md', 
+export const Button = ({
+  children,
+  variant = 'primary',
+  size = 'md',
   className = '',
   icon: Icon,
-  ...props 
+  isLoading = false,
+  disabled = false,
+  ...props
 }: any) => {
   const variants: any = {
-    primary: 'bg-black text-white shadow-lg shadow-black/10 active:scale-95',
-    secondary: 'bg-orange-600 text-white shadow-lg shadow-orange-200 active:scale-95',
-    outline: 'bg-white border border-gray-100 text-gray-600 active:bg-gray-50',
-    ghost: 'bg-transparent text-gray-500 hover:bg-gray-50',
+    primary: 'bg-black text-white shadow-lg shadow-black/10 active:scale-95 hover:bg-gray-800 focus:ring-2 focus:ring-orange-500 focus:ring-offset-2',
+    secondary: 'bg-orange-600 text-white shadow-lg shadow-orange-200 active:scale-95 hover:bg-orange-700 focus:ring-2 focus:ring-orange-500 focus:ring-offset-2',
+    outline: 'bg-white border border-gray-100 text-gray-600 active:bg-gray-50 hover:bg-gray-50 focus:ring-2 focus:ring-orange-500 focus:ring-offset-2',
+    ghost: 'bg-transparent text-gray-500 hover:bg-gray-50 focus:ring-2 focus:ring-orange-500 focus:ring-offset-2',
   };
 
   const sizes: any = {
-    sm: 'px-4 py-2 text-xs rounded-xl',
-    md: 'px-6 py-4 text-sm rounded-2xl font-bold',
-    lg: 'px-8 py-5 text-lg rounded-3xl font-black',
+    sm: 'px-4 py-2 text-xs rounded-xl min-h-[44px]',
+    md: 'px-6 py-4 text-sm rounded-2xl font-bold min-h-[44px]',
+    lg: 'px-8 py-5 text-lg rounded-3xl font-black min-h-[48px]',
   };
 
   return (
-    <button 
-      className={`flex items-center justify-center gap-2 transition-all ${variants[variant]} ${sizes[size]} ${className}`}
+    <button
+      className={`flex items-center justify-center gap-2 transition-all disabled:opacity-40 disabled:cursor-not-allowed ${variants[variant]} ${sizes[size]} ${className}`}
+      disabled={disabled || isLoading}
       {...props}
     >
-      {Icon && <Icon size={size === 'sm' ? 14 : 18} />}
-      {children}
+      {isLoading ? (
+        <span className="inline-block w-4 h-4 border-2 border-current border-r-transparent rounded-full animate-spin" />
+      ) : (
+        Icon && <Icon size={size === 'sm' ? 14 : 18} />
+      )}
+      {isLoading ? 'جاري المعالجة...' : children}
     </button>
   );
 };
@@ -130,6 +139,84 @@ export const Badge = ({ children, variant = 'info' }: any) => {
     <span className={`text-[10px] font-black px-2 py-1 rounded-lg uppercase ${styles[variant]}`}>
       {children}
     </span>
+  );
+};
+
+export const EmptyState = ({
+  icon: Icon = Inbox,
+  title = 'لا توجد بيانات',
+  description = 'لم نجد أي بيانات لعرضها',
+  action
+}: any) => (
+  <div className="flex flex-col items-center justify-center py-12 px-4">
+    <div className="w-16 h-16 rounded-full bg-gray-100 flex items-center justify-center mb-4">
+      <Icon size={32} className="text-gray-400" />
+    </div>
+    <h3 className="text-lg font-bold text-gray-900 mb-2">{title}</h3>
+    <p className="text-sm text-gray-500 text-center mb-6 max-w-sm">{description}</p>
+    {action}
+  </div>
+);
+
+export const LoadingSkeleton = ({
+  count = 3,
+  variant = 'card'
+}: any) => {
+  if (variant === 'card') {
+    return (
+      <div className="space-y-3">
+        {Array.from({ length: count }).map((_, i) => (
+          <div key={i} className="bg-white rounded-2xl border border-gray-100 p-4 space-y-3 animate-pulse">
+            <div className="h-6 bg-gray-200 rounded-lg w-3/4"></div>
+            <div className="h-4 bg-gray-200 rounded-lg w-1/2"></div>
+            <div className="flex gap-2">
+              <div className="h-8 bg-gray-200 rounded-lg w-20"></div>
+              <div className="h-8 bg-gray-200 rounded-lg w-20"></div>
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  if (variant === 'inline') {
+    return (
+      <div className="flex items-center justify-center py-8">
+        <div className="inline-block w-6 h-6 border-2 border-orange-500 border-r-transparent rounded-full animate-spin" />
+        <span className="ml-3 text-sm text-gray-600">جاري التحميل...</span>
+      </div>
+    );
+  }
+
+  return <LoadingSkeleton />;
+};
+
+export const ErrorState = ({
+  title = 'حدث خطأ',
+  description = 'حدث خطأ ما. يرجى المحاولة مرة أخرى.',
+  action
+}: any) => (
+  <div className="flex flex-col items-center justify-center py-12 px-4 bg-red-50 rounded-2xl border border-red-100">
+    <div className="w-16 h-16 rounded-full bg-red-100 flex items-center justify-center mb-4">
+      <AlertTriangle size={32} className="text-red-600" />
+    </div>
+    <h3 className="text-lg font-bold text-red-900 mb-2">{title}</h3>
+    <p className="text-sm text-red-700 text-center mb-6 max-w-sm">{description}</p>
+    {action}
+  </div>
+);
+
+export const FormError = ({
+  message,
+  visible = true
+}: any) => {
+  if (!visible || !message) return null;
+
+  return (
+    <div className="flex items-center gap-2 px-4 py-3 bg-red-50 border border-red-200 rounded-xl">
+      <AlertTriangle size={16} className="text-red-600 flex-shrink-0" />
+      <span className="text-sm text-red-700">{message}</span>
+    </div>
   );
 };
 
