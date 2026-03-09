@@ -4,23 +4,21 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Ziena (زينة) is a beauty services booking platform for the Saudi Arabian market. Clients book makeup artists and hairstylists; providers manage services and earnings; admins manage the platform. The UI is in Arabic (RTL).
+Ziena (زينة) is a beauty services booking platform for the Saudi Arabian market. Clients book makeup artists and hairstylists; providers manage services and earnings; admins manage the platform. The UI is in Arabic (RTL). **Single .NET 10 backend only** (Node.js removed).
 
 ## Commands
 
 ```bash
-# Node.js + React (root)
-npm start              # Dev: runs Express server (port 3001) + Vite frontend (port 3000) concurrently
-npm run dev            # Frontend only (port 3000)
-npm run server:watch   # Express backend only with auto-reload
+# Frontend
+npm run dev            # Vite frontend only (port 3000)
 npm run build          # Production build to /dist
-npm run start:prod     # Production: serves /dist + /api routes from Express
 npm run lint           # TypeScript type-check (tsc --noEmit)
 
 # .NET 10 backend (from Ziena.Backend/ directory)
-dotnet run --project Ziena.API          # Run the API (http://localhost:5000)
-dotnet build Ziena.Backend.slnx         # Build the full solution
+dotnet run --project Ziena.API                 # Run the API (http://localhost:5000)
+dotnet build Ziena.Backend.slnx                # Build the solution
 dotnet ef migrations add <Name> --project Ziena.Infrastructure --startup-project Ziena.API
+dotnet ef database update --project Ziena.Infrastructure --startup-project Ziena.API
 ```
 
 No test runner is configured. Type-check with `npm run lint`.
@@ -29,7 +27,9 @@ No test runner is configured. Type-check with `npm run lint`.
 
 ### Role-Based SPA
 
-The frontend is a single React SPA that routes to one of four apps based on the authenticated user's role:
+Single .NET 10 backend. React SPA in dev served by Vite (port 3000); in prod deployed to Vercel.
+
+Frontend routes to one of four role-based apps:
 
 ```
 src/App.tsx → AuthContext
@@ -39,114 +39,225 @@ src/App.tsx → AuthContext
   └── CLIENT          → ClientApp (src/apps/client/)
 ```
 
-Each role app is a large self-contained file. Source layout:
+Each role app is a self-contained file. Source layout:
 
 ```
 src/
 ├── apps/          — Role-based sub-apps (one large file per role)
-├── components/    — Shared UI: DesignSystem.tsx, Toast.tsx
+├── components/    — Shared UI: DesignSystem.tsx, Toast.tsx, etc.
 ├── contexts/      — AuthContext (user state + role switching)
-├── lib/           — api.ts, types.ts, mockData.ts
+├── lib/           — api.ts (single API namespace), types.ts, mockData.ts
 └── assets/        — Static assets
 ```
 
-The API client at [src/lib/api.ts](src/lib/api.ts) is the single interface to both backends.
+The API client at [src/lib/api.ts](src/lib/api.ts) is the single interface to the .NET backend.
 
-### Two-Backend Architecture
+### Single Backend: .NET 10
 
-The project runs **two backends in parallel**:
+All API endpoints are served by a single .NET 10 backend at `Ziena.Backend/`.
 
-| Backend | Tech | Port | Handles |
-|---------|------|------|---------|
-| Node.js/Express | `server/` | 3001 | Auth (OTP), Providers, Services, Messages, Reviews, Admin |
-| .NET 10 (Clean Architecture) | `Ziena.Backend/` | 5000 | Bookings, Wallet, Merchants |
-
-**Frontend API client** ([src/lib/api.ts](src/lib/api.ts)):
-- `api.*` — calls Node.js Express via `/api/...` (Vite proxy → port 3001)
-- `dotnetApi.*` — calls .NET backend via `/dotnet-api/...` (Vite proxy → port 5000)
-- Transition mappers `mapDotNetBookingToApi()` / `mapDotNetWalletToApi()` convert .NET responses to legacy `ApiBooking`/`ApiWallet` shapes so UI components work unchanged during migration
-
-### Node.js / Express Backend (`server/`)
-
-`server/index.ts` is the Express entry. Routes in `server/routes/`:
-- `auth.ts` — OTP login, admin password login, session creation
-- `providers.ts` — Provider CRUD & profile management
-- `services.ts` — Service CRUD
-- `bookings.ts` — Legacy booking support (list, status updates, pay, confirm)
-- `messages.ts` — Client-provider messaging
-- `wallet.ts` — Legacy wallet (transactions, IBAN payout requests)
-- `reviews.ts` — Review creation
-- `admin.ts` — Stats, dispute resolution, payout approvals
-
-`server/db.ts` initializes the schema, wraps the Turso/LibSQL client, and seeds demo data on first run. Uses Turso in production; falls back to `zeina.db` (SQLite file) in development when `TURSO_URL` is not set.
-
-### .NET 10 Backend (`Ziena.Backend/`)
-
-Clean Architecture layers:
+**Clean Architecture layers:**
 - `Ziena.Domain` — entities and enums (no dependencies)
-- `Ziena.Application` — DTOs (`DTOs/`) and service interfaces (`Interfaces/`)
-- `Ziena.Infrastructure` — EF Core + SQLite (`Persistence/`), service implementations (`Services/`), DI registration (`Extensions/InfrastructureServiceExtensions.cs`)
-- `Ziena.API` — controllers and `Program.cs`
+- `Ziena.Application` — DTOs and service interfaces
+- `Ziena.Infrastructure` — EF Core + SQLite, service implementations, DI registration
+- `Ziena.API` — controllers, middleware, `Program.cs`
 
-**Controllers:** `BookingsController`, `WalletController`, `MerchantsController`, `AdminController`
+**Controllers (11 total):**
+- `AuthController` — OTP send/verify, admin login, /me, logout
+- `ProvidersController` — list, get, get/me, update/me, services, reviews
+- `ServicesController` — CRUD for service catalog
+- `BookingsController` — create, list (role-aware), updateStatus, pay, confirm, dispute
+- `WalletController` — get, transactions, payout requests
+- `ConversationsController` — list, create, get messages, send message
+- `ReviewsController` — create review
+- `AdminController` — stats, providers verify, disputes, payouts, revenue
+- `PaymentsController` — Moyasar create/callback/webhook
+- `MerchantsController` — merchant CRUD (internal use)
+- `NotificationsController` — push subscriptions, VAPID keys
 
-SQLite DB (`ziena.db`) is created next to the running binary. Connection string is in `Ziena.API/appsettings.json`.
+**Database:** SQLite via EF Core. File: `ziena.db` (created next to the running binary).
 
-#### ProviderRefId Bridge Pattern
+**Authentication:** Bearer token stored in `Sessions` table. Middleware reads `Authorization` header, looks up token, sets `HttpContext.Items["UserId"]` and `HttpContext.Items["UserRole"]`.
 
-Node.js providers use string IDs (`"p1"`, `"p2"`). .NET uses GUIDs. The `Merchant.ProviderRefId` field stores the Node.js string ID so both systems share data:
-- Frontend sends `merchantId: "p1"` in booking creation
-- .NET `BookingService` looks up `Merchant` via `ProviderRefId == "p1"` instead of Guid matching
-- `WalletController` route is `{providerRefId}` (string, not `{id:guid}`)
-
-### Database
-
-- **Node.js** uses Turso (LibSQL) in production; `zeina.db` (SQLite) in dev
-- **.NET** uses EF Core with SQLite; `ziena.db` created next to the binary
-- They are **separate databases**; the bridge is `Merchant.ProviderRefId`
-- 2% commission escrow: `ceil(price * 0.02)` withheld on each booking, released on completion
-
-### Vite Proxy (Development)
+### Vite Proxy (Development Only)
 
 ```
-/api/*         → http://localhost:3001  (Node.js Express)
-/dotnet-api/*  → http://localhost:5000  (strip /dotnet-api prefix, then .NET)
+/api/* → http://localhost:5000  (.NET 10)
 ```
 
-In production, `VITE_DOTNET_API_URL` is baked into the React bundle at build time.
+In production, the SPA is deployed separately (Vercel); the .NET API is on Render. The `VITE_API_URL` env var is baked into the APK at build time for Capacitor.
+
+## Database
+
+**EF Core with SQLite.** Connection string: `Ziena.Backend/Ziena.API/appsettings.json`.
+
+**Domain entities (9 core + extended existing):**
+
+Core domain:
+- `User` — phone (unique), name, email, avatar, role (enum: Admin, Provider, Client)
+- `Merchant` — Guid Id, UserId FK, businessName, specialty, rating, city, coveredNeighborhoodsJson, subscriptionTier, reviewCount, avatar, IBAN, isVerified
+
+Bookings & Wallet:
+- `Booking` — ClientId (Node.js string ref), MerchantId FK, ServiceId FK, ScheduledAt, TotalPrice, EscrowAmount, Status, PaymentStatus, Neighborhood, ClientConfirmed, ProviderConfirmed, MoyasarPaymentId, ReviewId FK, DisputeId FK
+- `Wallet` — MerchantId FK, TotalEarnings, CommissionDeducted, PendingBalance (computed)
+- `Transaction` — WalletId FK, BookingId FK (nullable), Type (enum: Credit, Debit, Payout), Amount, Status
+
+Services & Reviews:
+- `Service` — MerchantId FK, Name, Description, Price, Duration, Category, Image, IsAvailable
+- `Review` — BookingId FK (unique), ClientId FK, MerchantId FK, Rating, Comment
+
+Messaging:
+- `Conversation` — ClientId FK, MerchantId FK (unique composite index)
+- `Message` — ConversationId FK, SenderId FK, SenderRole (enum), Content, IsRead
+
+Auth & Admin:
+- `OtpCode` — PhoneNumber (unique), Code, ExpiresAt
+- `Session` — UserId FK, Token (unique), ExpiresAt
+- `Dispute` — BookingId FK, ClientId FK, MerchantId FK, Reason, Status, Resolution
+- `PayoutRequest` — MerchantId FK, Amount, IBAN, Status
+
+**Key business logic:**
+- 2% commission escrow: `ceil(price * 0.02)` withheld on booking creation, released on completion
+- Provider rating aggregated from reviews: `AVG(Review.Rating)` grouped by `MerchantId`
+- Wallet `PendingBalance` = sum of all Booking prices where Status in (Pending, Confirmed) and MerchantId matches
 
 ## Environment Variables
 
-See `.env.example` for the full list with descriptions.
-
-Key variables:
-
+### Frontend (.env, baked into bundle at build time)
 ```
-TURSO_URL           — Turso production DB (Node.js)
-TURSO_TOKEN         — Turso JWT (Node.js)
-VITE_DOTNET_API_URL — .NET backend URL baked into React bundle at build time
+VITE_API_URL     — .NET backend URL (e.g., http://localhost:5000 in dev, https://api.render.com in prod)
 ```
 
-## Demo Credentials
+### Backend (Ziena.Backend/Ziena.API/appsettings.json or env override)
+```
+Auth:AdminPassword                    — admin login password (default: "admin")
+Auth:SessionDays                      — token expiration (default: 30)
+OtpLess:ClientId                      — WhatsApp OTP provider client ID
+OtpLess:ClientSecret                  — WhatsApp OTP provider client secret
+OtpLess:BaseUrl                       — OTPless API URL (default: https://auth.otpless.app/auth/otp/v1)
+Moyasar:SecretKey                     — Moyasar API secret key (test or production)
+Moyasar:WebhookSecret                 — Moyasar webhook signing secret
+Moyasar:PublishableKey                — Moyasar publishable key (for frontend, if needed)
+Frontend:Url                          — Frontend URL for payment callback redirects (http://localhost:3000 in dev)
+ASPNETCORE_ENVIRONMENT                — Production, Development, or Staging
+```
 
-| Role     | Phone       | OTP  |
-|----------|-------------|------|
-| Client   | 0555123456  | 1234 |
-| Provider | 0501234567  | 1234 |
-| Admin    | —           | password: `admin` |
+## Test Accounts
 
-OTP is hardcoded to `1234` for all users (no real SMS integration).
+All accounts use OTP: **1234**
 
-## Deployment (Render)
+| Role     | Name  | Phone      |
+|----------|-------|------------|
+| Admin    | أماني  | 0555123456 |
+| Provider | منال  | 0505467269 |
+| Client   | ليلى  | 0582314923 |
 
-`render.yaml` defines two services:
-- `zeina` — Node.js web service: `npm run build` + `npm run start:prod`
-- `ziena-dotnet` — Docker service: Dockerfile at `./Ziena.Backend/Dockerfile`, context `./Ziena.Backend`
+Seeded in `Ziena.Infrastructure/Persistence/DbInitializer.cs` on first database init.
+
+## Deployment
+
+**Frontend:** Vercel
+- Trigger: `npm run build`, upload `dist/` to Vercel
+- Env var: `VITE_API_URL` = Render .NET API URL
+
+**Backend:** Render Docker
+- Dockerfile: `Ziena.Backend/Dockerfile`
+- Command: `dotnet Ziena.API.dll`
+- Env vars: all the `appsettings.json` keys above (auto-injected by Render into `appsettings.json`)
+- Service: `ziena-dotnet` in `render.yaml`
 
 ## Key Conventions
 
-- Path alias `@/` maps to the project root (configured in both `vite.config.ts` and `tsconfig.json`).
-- All Node.js backend routes require `Authorization: Bearer <token>` except auth endpoints. The token is stored in `localStorage` and injected by the API client.
-- The `users` table has a `role` column (`ADMIN`, `PROVIDER`, `CLIENT`). Creating a provider via OTP auto-creates a row in the `providers` table.
-- Subscription tiers (`FREE`, `BASIC`, `PRO`) exist in the schema but are not fully implemented in business logic.
-- Dev-only role switcher (floating pill at bottom of screen) is visible only when `import.meta.env.DEV`. Uses `AuthContext.switchRole()`.
+- Path alias `@/` maps to the project root (configured in both `vite.config.ts` and `tsconfig.json`)
+- All .NET API routes require `Authorization: Bearer <token>` EXCEPT:
+  - `POST /api/auth/send-otp` — open
+  - `POST /api/auth/verify-otp` — open
+  - `POST /api/auth/admin-login` — open
+  - `GET /api/payments/callback` — open (3DS redirect)
+  - `POST /api/payments/webhook` — open (Moyasar webhook)
+- The token is stored in `localStorage` (key: `auth_token`) and injected as `Authorization: Bearer <token>` by the API client
+- Provider GUID (from `Merchant.Id`) is stored in auth token response as `providerId`
+- Dev-only role switcher (floating pill at bottom of screen) is visible only when `import.meta.env.DEV`. Uses `AuthContext.switchRole()`
+- Subscription tiers (`FREE`, `BASIC`, `PRO`) exist in the schema but are not fully implemented in business logic
+- CORS origin: must whitelist frontend Vercel URL in .NET middleware `AddCors()`
+
+## API Client Structure (src/lib/api.ts)
+
+Single `api.*` namespace with subgroups:
+
+```typescript
+api.auth.sendOtp()
+api.auth.verifyOtp()
+api.auth.adminLogin()
+api.auth.logout()
+api.auth.getMe()
+api.auth.updateMe()
+
+api.providers.list()
+api.providers.get(id)
+api.providers.getMe()
+api.providers.updateMe()
+api.providers.getServices(id)
+api.providers.getReviews(id)
+
+api.services.list()
+api.services.create()
+api.services.update(id)
+api.services.delete(id)
+
+api.bookings.list()
+api.bookings.create()
+api.bookings.updateStatus(id, status)
+api.bookings.pay(id)
+api.bookings.confirm(id)
+api.bookings.dispute(id)
+api.bookings.getAvailableMerchants(serviceId, time)
+
+api.wallet.get()
+api.wallet.getTransactions()
+api.wallet.requestPayout(amount, iban)
+
+api.conversations.list()
+api.conversations.create(providerId)
+api.conversations.getMessages(id)
+api.conversations.sendMessage(id, content)
+
+api.reviews.create(bookingId, rating, comment)
+
+api.payments.create(bookingId)
+// callback is a 3DS redirect, not an API call
+// webhook is inbound Moyasar POST
+
+api.admin.getStats()
+api.admin.getProviders()
+api.admin.verifyProvider(id)
+api.admin.getDisputes()
+api.admin.resolveDispute(id, favorClient)
+api.admin.getPayouts()
+api.admin.processPayout(id, approved)
+api.admin.getRevenue(days)
+
+api.notifications.getVapidPublicKey()
+api.notifications.subscribe(subscription)
+```
+
+## Android APK
+
+**Build:**
+```bash
+npm run build
+npx cap copy android
+cd android && bash gradlew assembleRelease
+```
+
+APK file: `android/app/build/outputs/apk/release/app-release.apk`
+
+**For Capacitor to use the .NET backend URL:**
+- Set `VITE_API_URL=https://your-render-url.onrender.com/api` before `npm run build`
+- Capacitor rewrites relative `/api/` URLs to the absolute `VITE_API_URL`
+
+## Git & CI/CD
+
+- Main branch: `main` (default)
+- CI/CD: GitHub Actions (future)
+- Pre-commit: TypeScript lint via `npm run lint`
