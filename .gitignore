@@ -32,3 +32,4 @@ prd_extracted.txt
 # .NET build artifacts
 **/obj/
 **/bin/
+ziena-key.jks
