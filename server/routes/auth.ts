@@ -80,7 +80,15 @@ router.post('/send-otp', async (req, res) => {
     } else {
       // Fallback: random 4-digit code printed to console (dev / OTPless not configured)
       // Demo phones always get code 1234 for easy testing
-      const DEMO_PHONES = ['+966582314924', '0582314924', '966582314924', '0555123456', '0501234567', '0555234567', '0555345678'];
+      const DEMO_PHONES = [
+        // Test accounts
+        '+966582314923', '0582314923', '966582314923', // Client: Lyla
+        '+966505467269', '0505467269', '966505467269', // Provider: Manal
+        '+966555123456', '0555123456', '966555123456', // Admin: Amani
+        // Legacy test accounts
+        '+966582314924', '0582314924', '966582314924', // Old admin
+        '0501234567', '0555234567', '0555345678'
+      ];
       const code = DEMO_PHONES.includes(phone) ? '1234' : Math.floor(1000 + Math.random() * 9000).toString();
       if (process.env.NODE_ENV !== 'production') {
         console.log(`[OTP] Phone: ${phone} → Code: ${code}`);

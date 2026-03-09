@@ -196,10 +196,24 @@ async function seedData() {
     await client.execute({ sql, args });
   };
 
-  // Admin user only
-  await ins('INSERT INTO users (id,name,phone,role) VALUES (?,?,?,?)', ['admin-1','إدارة زينة','+966582314924','ADMIN']);
+  // Admin user: Amani
+  await ins('INSERT INTO users (id,name,phone,role) VALUES (?,?,?,?)', ['admin-1','أماني','+966555123456','ADMIN']);
 
-  console.log('✅ Database seeded with admin account');
+  // Client user: Lyla
+  await ins('INSERT INTO users (id,name,phone,role) VALUES (?,?,?,?)', ['client-lyla','ليلى','+966582314923','CLIENT']);
+
+  // Provider user: Manal
+  await ins('INSERT INTO users (id,name,phone,role) VALUES (?,?,?,?)', ['provider-manal','منال','+966505467269','PROVIDER']);
+
+  // Create provider profile for Manal
+  await ins('INSERT INTO providers (id,user_id,specialty,rating,bio,city,is_verified) VALUES (?,?,?,?,?,?,?)',
+    ['p-manal','provider-manal','مكياج وتصفيف شعر',4.8,'متخصصة في المكياج والتصفيف بتقنيات حديثة','الرياض',1]);
+
+  // Create wallet for provider
+  await ins('INSERT INTO wallets (id,user_id,balance,commission_withheld) VALUES (?,?,?,?)',
+    ['w-manal','provider-manal',0,0]);
+
+  console.log('✅ Database seeded with test accounts (Admin: Amani, Client: Lyla, Provider: Manal)');
 }
 
 export default db;
